@@ -1,0 +1,517 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Financial Plot Viewer</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        :root {
+            --primary: #2563eb;
+            --secondary: #1e40af;
+            --success: #10b981;
+            --danger: #ef4444;
+            --warning: #f59e0b;
+            --light: #f3f4f6;
+            --dark: #1f2937;
+            --border: #e5e7eb;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            padding: 20px;
+        }
+
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+        }
+
+        /* Browser Frame */
+        .browser-frame {
+            background: white;
+            border-radius: 12px;
+            box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+            overflow: hidden;
+            display: flex;
+            flex-direction: column;
+            height: 90vh;
+        }
+
+        /* Browser Header */
+        .browser-header {
+            background: var(--light);
+            border-bottom: 1px solid var(--border);
+            padding: 12px 16px;
+            display: flex;
+            align-items: center;
+            gap: 12px;
+        }
+
+        .browser-controls {
+            display: flex;
+            gap: 8px;
+        }
+
+        .control-btn {
+            width: 12px;
+            height: 12px;
+            border-radius: 50%;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+
+        .control-btn.red { background: #ff5f56; }
+        .control-btn.yellow { background: #ffbd2e; }
+        .control-btn.green { background: #27c93f; }
+
+        .address-bar {
+            flex: 1;
+            margin-left: 12px;
+            padding: 6px 12px;
+            background: white;
+            border: 1px solid var(--border);
+            border-radius: 6px;
+            font-size: 13px;
+            color: #666;
+        }
+
+        /* Main Content */
+        .browser-content {
+            flex: 1;
+            overflow-y: auto;
+            padding: 30px;
+            background: white;
+        }
+
+        .header {
+            margin-bottom: 30px;
+        }
+
+        .header h1 {
+            font-size: 28px;
+            color: var(--dark);
+            margin-bottom: 8px;
+        }
+
+        .header p {
+            color: #666;
+            font-size: 14px;
+        }
+
+        /* Query Section */
+        .query-section {
+            background: var(--light);
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            padding: 20px;
+            margin-bottom: 30px;
+        }
+
+        .query-section label {
+            display: block;
+            margin-bottom: 8px;
+            font-weight: 600;
+            color: var(--dark);
+            font-size: 14px;
+        }
+
+        .input-group {
+            display: flex;
+            gap: 10px;
+        }
+
+        #queryInput {
+            flex: 1;
+            padding: 12px;
+            border: 1px solid var(--border);
+            border-radius: 6px;
+            font-size: 14px;
+            background: white;
+            transition: all 0.2s;
+        }
+
+        #queryInput:focus {
+            outline: none;
+            border-color: var(--primary);
+            box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.1);
+        }
+
+        .btn {
+            padding: 12px 24px;
+            border: none;
+            border-radius: 6px;
+            font-weight: 600;
+            font-size: 14px;
+            cursor: pointer;
+            transition: all 0.2s;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .btn-primary {
+            background: var(--primary);
+            color: white;
+        }
+
+        .btn-primary:hover {
+            background: var(--secondary);
+            transform: translateY(-2px);
+            box-shadow: 0 4px 12px rgba(37, 99, 235, 0.4);
+        }
+
+        .btn-primary:disabled {
+            background: #cbd5e1;
+            cursor: not-allowed;
+            transform: none;
+        }
+
+        /* Plot Display */
+        .plot-section {
+            background: var(--light);
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            padding: 20px;
+            margin-bottom: 20px;
+            min-height: 400px;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+        }
+
+        .plot-section.loading {
+            background: #fafafa;
+        }
+
+        .plot-image {
+            max-width: 100%;
+            max-height: 500px;
+            border-radius: 6px;
+            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+        }
+
+        .plot-info {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 15px;
+            margin-bottom: 20px;
+        }
+
+        .info-card {
+            background: white;
+            border: 1px solid var(--border);
+            border-radius: 6px;
+            padding: 15px;
+        }
+
+        .info-card label {
+            display: block;
+            font-size: 12px;
+            color: #666;
+            text-transform: uppercase;
+            margin-bottom: 5px;
+            font-weight: 600;
+        }
+
+        .info-card .value {
+            font-size: 20px;
+            font-weight: 700;
+            color: var(--primary);
+        }
+
+        /* Loading Spinner */
+        .spinner {
+            border: 3px solid var(--light);
+            border-top: 3px solid var(--primary);
+            border-radius: 50%;
+            width: 40px;
+            height: 40px;
+            animation: spin 1s linear infinite;
+            margin: 20px auto;
+        }
+
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+
+        .status-message {
+            text-align: center;
+            color: #666;
+            font-size: 14px;
+            margin-top: 15px;
+        }
+
+        .error-message {
+            background: #fee2e2;
+            border: 1px solid #fecaca;
+            color: #991b1b;
+            padding: 15px;
+            border-radius: 6px;
+            margin-bottom: 20px;
+        }
+
+        .success-message {
+            background: #dcfce7;
+            border: 1px solid #bbf7d0;
+            color: #166534;
+            padding: 15px;
+            border-radius: 6px;
+            margin-bottom: 20px;
+        }
+
+        /* Example Queries */
+        .examples {
+            background: var(--light);
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            padding: 20px;
+            margin-bottom: 20px;
+        }
+
+        .examples h3 {
+            font-size: 14px;
+            font-weight: 600;
+            color: var(--dark);
+            margin-bottom: 12px;
+        }
+
+        .example-list {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 10px;
+        }
+
+        .example-btn {
+            padding: 8px 12px;
+            background: white;
+            border: 1px solid var(--border);
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 13px;
+            color: var(--primary);
+            transition: all 0.2s;
+            font-weight: 500;
+        }
+
+        .example-btn:hover {
+            background: var(--primary);
+            color: white;
+            border-color: var(--primary);
+        }
+
+        /* Scrollbar */
+        .browser-content::-webkit-scrollbar {
+            width: 8px;
+        }
+
+        .browser-content::-webkit-scrollbar-track {
+            background: var(--light);
+        }
+
+        .browser-content::-webkit-scrollbar-thumb {
+            background: #cbd5e1;
+            border-radius: 4px;
+        }
+
+        .browser-content::-webkit-scrollbar-thumb:hover {
+            background: #94a3b8;
+        }
+
+        @media (max-width: 768px) {
+            .browser-content {
+                padding: 20px;
+            }
+
+            .header h1 {
+                font-size: 20px;
+            }
+
+            .input-group {
+                flex-direction: column;
+            }
+
+            .plot-info {
+                grid-template-columns: 1fr;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="browser-frame">
+            <!-- Browser Header -->
+            <div class="browser-header">
+                <div class="browser-controls">
+                    <div class="control-btn red"></div>
+                    <div class="control-btn yellow"></div>
+                    <div class="control-btn green"></div>
+                </div>
+                <div class="address-bar">📊 Financial Plot Viewer</div>
+            </div>
+
+            <!-- Main Content -->
+            <div class="browser-content">
+                <!-- Header -->
+                <div class="header">
+                    <h1>📈 Financial Plot Viewer</h1>
+                    <p>Generate and visualize financial metrics trends from RAG queries</p>
+                </div>
+
+                <!-- Error/Success Messages -->
+                <div id="messageContainer"></div>
+
+                <!-- Example Queries -->
+                <div class="examples">
+                    <h3>💡 Example Queries (Click to try):</h3>
+                    <div class="example-list">
+                        <button class="example-btn" onclick="setExample('Show me Apple revenue growth trend')">Apple Revenue</button>
+                        <button class="example-btn" onclick="setExample('What is Microsoft net income over time')">MSFT Net Income</button>
+                        <button class="example-btn" onclick="setExample('Tesla operating income trend analysis')">Tesla Op Income</button>
+                        <button class="example-btn" onclick="setExample('Amazon total assets historical data')">Amazon Assets</button>
+                        <button class="example-btn" onclick="setExample('Google equity growth chart')">Google Equity</button>
+                    </div>
+                </div>
+
+                <!-- Query Input -->
+                <div class="query-section">
+                    <label for="queryInput">Enter a financial query:</label>
+                    <div class="input-group">
+                        <input 
+                            type="text" 
+                            id="queryInput" 
+                            placeholder="e.g., 'Show me Apple revenue trend over time'"
+                            onkeypress="handleKeyPress(event)"
+                        >
+                        <button class="btn btn-primary" onclick="generatePlot()">
+                            <span>📊</span>
+                            <span>Generate Plot</span>
+                        </button>
+                    </div>
+                </div>
+
+                <!-- Plot Display Section -->
+                <div class="plot-section" id="plotSection" style="display: none;">
+                    <div id="plotContent"></div>
+                </div>
+
+                <!-- Plot Info -->
+                <div class="plot-info" id="plotInfo" style="display: none;"></div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const API_BASE = "http://localhost:8000";
+
+        function setExample(query) {
+            document.getElementById("queryInput").value = query;
+            generatePlot();
+        }
+
+        function handleKeyPress(event) {
+            if (event.key === "Enter") {
+                generatePlot();
+            }
+        }
+
+        function showMessage(message, type = "error") {
+            const container = document.getElementById("messageContainer");
+            const className = type === "error" ? "error-message" : "success-message";
+            container.innerHTML = `<div class="${className}">${message}</div>`;
+            setTimeout(() => {
+                container.innerHTML = "";
+            }, 5000);
+        }
+
+        async function generatePlot() {
+            const query = document.getElementById("queryInput").value.trim();
+            
+            if (!query) {
+                showMessage("❌ Please enter a query", "error");
+                return;
+            }
+
+            const plotSection = document.getElementById("plotSection");
+            const plotContent = document.getElementById("plotContent");
+            const plotInfo = document.getElementById("plotInfo");
+
+            // Show loading state
+            plotSection.style.display = "flex";
+            plotContent.innerHTML = '<div class="spinner"></div><div class="status-message">Generating plot...</div>';
+            plotInfo.style.display = "none";
+
+            try {
+                const response = await fetch(`${API_BASE}/api/plot`, {
+                    method: "POST",
+                    headers: {
+                        "Content-Type": "application/json",
+                    },
+                    body: JSON.stringify({
+                        user_id: "web-user",
+                        question: query,
+                    }),
+                });
+
+                if (!response.ok) {
+                    const error = await response.json();
+                    throw new Error(error.message || "Failed to generate plot");
+                }
+
+                const data = await response.json();
+
+                if (data.error) {
+                    showMessage(`❌ ${data.message}`, "error");
+                    plotSection.style.display = "none";
+                    return;
+                }
+
+                // Display plot image
+                const imgBase64 = data.plot_base64;
+                plotContent.innerHTML = `<img src="data:image/png;base64,${imgBase64}" alt="Financial Plot" class="plot-image">`;
+
+                // Display plot info
+                plotInfo.style.display = "grid";
+                plotInfo.innerHTML = `
+                    <div class="info-card">
+                        <label>Company</label>
+                        <div class="value">${data.company}</div>
+                    </div>
+                    <div class="info-card">
+                        <label>Metric</label>
+                        <div class="value">${data.metric.replace(/_/g, ' ')}</div>
+                    </div>
+                    <div class="info-card">
+                        <label>Data Points</label>
+                        <div class="value">${data.data_points}</div>
+                    </div>
+                    <div class="info-card">
+                        <label>Type</label>
+                        <div class="value">${data.is_trend ? 'Trend' : 'Latest'}</div>
+                    </div>
+                `;
+
+                showMessage(`✅ Plot generated successfully for ${data.company}!`, "success");
+            } catch (error) {
+                console.error("Error:", error);
+                showMessage(`❌ ${error.message}`, "error");
+                plotSection.style.display = "none";
+            }
+        }
+
+        // Focus input on load
+        window.addEventListener("load", () => {
+            document.getElementById("queryInput").focus();
+        });
+    </script>
+</body>
+</html>

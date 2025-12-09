@@ -7,6 +7,8 @@ from typing import Any, Dict
 import os
 import traceback
 
+import anyio
+
 from app.core.chains import answer_financial_question
 from app.core.plot_generator import generate_plot_from_rag_output
 
@@ -30,16 +32,20 @@ class ChatResponse(BaseModel):
 
 
 @app.post("/chat", response_model=ChatResponse)
-def chat_endpoint(req: ChatRequest):
+async def chat_endpoint(req: ChatRequest):
+    """Async endpoint that runs the (potentially blocking) chain in a worker thread.
+
+    Running the whole orchestration in a worker thread prevents blocking the
+    event loop and avoids issues with uvicorn's reload and asyncio cancellations.
+    """
     try:
-        result = answer_financial_question(req.question)
+        result = await anyio.to_thread.run_sync(answer_financial_question, req.question)
         return ChatResponse(
             answer=result.get("answer", ""),
             query_type=result.get("query_type", "UNKNOWN"),
             router=result.get("router", {}),
         )
     except Exception as e:
-        # Return a valid ChatResponse with error details
         error_msg = f"Server error: {str(e)}"
         return ChatResponse(
             answer=error_msg,
@@ -148,8 +154,17 @@ def map_page():
     return {"message": "Map page not found."}
 
 
+@app.get("/plot-viewer")
+def plot_viewer_page():
+    """Serve the financial plot viewer page."""
+    plot_viewer_path = os.path.join(web_dir, "plot-viewer.html")
+    if os.path.exists(plot_viewer_path):
+        return FileResponse(plot_viewer_path)
+    return {"message": "Plot viewer page not found."}
+
+
 @app.post("/api/plot")
-def api_plot(req: ChatRequest):
+async def api_plot(req: ChatRequest):
     """
     Extract financial metrics from query/answer text and generate a plot.
     
@@ -157,8 +172,9 @@ def api_plot(req: ChatRequest):
     Returns JSON with company, metric, and base64-encoded plot image.
     """
     try:
-        # Use the question as the text to extract parameters from
-        result = generate_plot_from_rag_output(req.question)
+        # Use the question as the text to extract parameters from. Run in a
+        # worker thread because plotting + DB operations are blocking.
+        result = await anyio.to_thread.run_sync(generate_plot_from_rag_output, req.question)
         
         if result is None:
             return JSONResponse(
@@ -179,4 +195,16 @@ def api_plot(req: ChatRequest):
                 "traceback": traceback.format_exc(),
             }
         )
+
+
+@app.on_event("startup")
+async def startup_event():
+    # Placeholder for any async startup tasks (DB connections, metrics, etc.)
+    print("⚡ Financial RAG API starting up")
+
+
+@app.on_event("shutdown")
+async def shutdown_event():
+    # Placeholder for graceful shutdown tasks
+    print("⚡ Financial RAG API shutting down")
 

@@ -9,6 +9,8 @@ pydantic-settings
 langchain 
 langchain-openai 
 langchain-community 
+langchain-ollama
+anyio
  
 # Vector store 
 chromadb 

@@ -1,12 +1,10 @@
 from typing import Dict, Any
 from app.config import settings
 from app.core.router import classify_query
-from app.core.mock_llm import get_mock_llm
 from app.core.llm import get_llm
 
-# Get the configured LLM (Ollama, OpenAI, or Mock)
-llm = get_llm()
-mock_llm = get_mock_llm()
+# Do NOT instantiate LLMs at import time. Use get_llm() inside functions
+# so startup / uvicorn --reload doesn't trigger heavy network I/O.
 
 
 def _llm_invoke(messages: list, use_mock: bool = False) -> str:
@@ -16,26 +14,38 @@ def _llm_invoke(messages: list, use_mock: bool = False) -> str:
     For LLM chains, we convert messages to string prompt format.
     """
     if use_mock:
+        from app.core.mock_llm import get_mock_llm
+        mock_llm = get_mock_llm()
         user_msg = next((m["content"] for m in messages if m["role"] == "user"), "")
         return mock_llm.invoke(user_msg).get("content", "No response")
     
     try:
-        # Try using LangChain LLM interface (works for Ollama, OpenAI, etc.)
-        if hasattr(llm, 'invoke'):
-            # Convert messages to a single prompt string
+        llm = get_llm()
+        # Try using common LLM interface
+        if hasattr(llm, "invoke"):
             prompt = "\n".join([f"{m['role']}: {m['content']}" for m in messages])
             result = llm.invoke(prompt)
-            if hasattr(result, 'content'):
+            if hasattr(result, "content"):
                 return result.content
             return str(result)
-        elif hasattr(llm, 'get_response'):
-            # Some LLMs use different interfaces
+
+        if hasattr(llm, "get_response"):
             return llm.get_response(messages)
-        else:
-            # Fallback to mock
-            return mock_llm.invoke(messages[-1]['content']).get("content", "No response")
+
+        if hasattr(llm, "__call__"):
+            # Some LangChain wrappers are callable
+            prompt = "\n".join([f"{m['role']}: {m['content']}" for m in messages])
+            return llm(prompt)
+
+        # Last-resort fallback to mock
+        from app.core.mock_llm import get_mock_llm
+        mock_llm = get_mock_llm()
+        user_msg = next((m["content"] for m in messages if m["role"] == "user"), "")
+        return mock_llm.invoke(user_msg).get("content", "No response")
     except Exception as e:
         print(f"LLM error: {e}, using mock fallback")
+        from app.core.mock_llm import get_mock_llm
+        mock_llm = get_mock_llm()
         user_msg = next((m["content"] for m in messages if m["role"] == "user"), "")
         return mock_llm.invoke(user_msg).get("content", "No response")
 
