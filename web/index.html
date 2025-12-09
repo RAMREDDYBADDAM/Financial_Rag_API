@@ -7,7 +7,7 @@
     <style>
       :root{--bg:#f4f6f8;--top:#e9eef6;--tab-active:#fff;--muted:#6b7280}
       body{font-family:Inter,Segoe UI,Arial,Helvetica,sans-serif;background:var(--bg);margin:18px}
-      .browser-frame{max-width:980px;margin:12px auto;border-radius:12px;box-shadow:0 8px 28px rgba(16,24,40,0.08);overflow:hidden;background:var(--top)}
+      .browser-frame{max-width:1200px;margin:12px auto;border-radius:12px;box-shadow:0 8px 28px rgba(16,24,40,0.08);overflow:hidden;background:var(--top)}
       .browser-top{display:flex;flex-direction:column;padding:8px 12px;border-bottom:1px solid rgba(0,0,0,0.06);background:linear-gradient(#f7f9fc,var(--top))}
       .tabs{display:flex;gap:8px;margin-bottom:8px}
       .tab{padding:6px 12px;border-radius:6px;color:var(--muted);background:transparent;font-size:13px}
@@ -16,13 +16,24 @@
       .icon-btn{background:transparent;border:none;padding:6px 8px;border-radius:6px;font-size:14px;cursor:pointer}
       .address-bar{flex:1;background:#fff;padding:8px 12px;border-radius:8px;border:1px solid rgba(0,0,0,0.06);font-size:13px;color:#333}
       .toolbar-actions{display:flex;gap:6px}
-      .browser-content{background:#fff;padding:20px;min-height:360px}
-      h1{margin:0 0 8px 0}
+      .browser-content{background:#fff;padding:20px;min-height:360px;display:grid;grid-template-columns:1fr 1fr;gap:20px}
+      .content-left{border-right:1px solid #e5e7eb;padding-right:20px}
+      .content-right{padding-left:20px}
+      h1{margin:0 0 8px 0;font-size:24px}
+      h2{margin:16px 0 8px 0;font-size:18px}
       p{color:var(--muted)}
-      textarea{width:100%;height:120px;border-radius:8px;border:1px solid #e5e7eb;padding:10px}
-      button{padding:8px 12px;margin-top:8px;border-radius:8px;border:none;background:#2563eb;color:#fff;cursor:pointer}
-      pre{background:#f6f8fa;padding:12px;border-radius:8px;white-space:pre-wrap}
-      @media(max-width:640px){.browser-frame{margin:8px}}
+      textarea{width:100%;height:120px;border-radius:8px;border:1px solid #e5e7eb;padding:10px;font-family:monospace}
+      button{padding:8px 12px;margin-top:8px;border-radius:8px;border:none;background:#2563eb;color:#fff;cursor:pointer;font-weight:500}
+      button:hover{background:#1d4ed8}
+      button:disabled{background:#9ca3af;cursor:not-allowed}
+      pre{background:#f6f8fa;padding:12px;border-radius:8px;white-space:pre-wrap;font-size:12px;max-height:300px;overflow-y:auto}
+      .plot-container{text-align:center}
+      .plot-container img{max-width:100%;height:auto;border-radius:8px;box-shadow:0 2px 8px rgba(0,0,0,0.1)}
+      .plot-meta{font-size:12px;color:var(--muted);margin-top:8px}
+      .loading{color:var(--muted);font-style:italic}
+      .error{color:#dc2626;padding:10px;background:#fee2e2;border-radius:6px;margin-top:8px}
+      .success{color:#059669;padding:10px;background:#d1fae5;border-radius:6px;margin-top:8px}
+      @media(max-width:960px){.browser-content{grid-template-columns:1fr}.content-left,.content-right{border:none;padding:0}}
     </style>
   </head>
   <body>
@@ -43,31 +54,50 @@
       </div>
 
       <div class="browser-content">
-        <h1>Financial RAG — Demo</h1>
-        <p>Enter a finance question and press <strong>Ask</strong>.</p>
-        <textarea id="question" placeholder="What are Apple's main products?">What are Apple's main products?</textarea>
-        <br />
-        <button id="ask">Ask</button>
-        <h2>Answer</h2>
-        <pre id="answer">(waiting)</pre>
+        <div class="content-left">
+          <h1>Financial RAG — Demo</h1>
+          <p>Enter a finance question and press <strong>Ask</strong>.</p>
+          <textarea id="question" placeholder="What are Apple's main products? Show me Apple revenue growth trend">Show me Apple revenue growth trend</textarea>
+          <br />
+          <button id="ask">Ask</button>
+          <h2>Answer</h2>
+          <pre id="answer" class="loading">(waiting)</pre>
+        </div>
+
+        <div class="content-right">
+          <h2>Financial Plot</h2>
+          <div id="plot-section">
+            <p class="loading">Plot will appear here when you ask about financial metrics...</p>
+          </div>
+        </div>
+      </div>
 
         <script>
           const askBtn = document.getElementById('ask')
           const qEl = document.getElementById('question')
-          const out = document.getElementById('answer')
+          const answerEl = document.getElementById('answer')
+          const plotSectionEl = document.getElementById('plot-section')
 
           askBtn.onclick = async () => {
-            out.textContent = 'Loading...'
+            answerEl.textContent = 'Loading...'
+            answerEl.classList.add('loading')
+            plotSectionEl.innerHTML = '<p class="loading">Generating plot...</p>'
+            
             try {
+              const question = qEl.value
+              
+              // Fetch RAG answer
               const res = await fetch('/chat', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ user_id: 'web-demo', question: qEl.value }),
+                body: JSON.stringify({ user_id: 'web-demo', question: question }),
               })
               
               if (!res.ok) {
                 const text = await res.text()
-                out.textContent = `HTTP ${res.status} Error:\n${text}`
+                answerEl.textContent = `HTTP ${res.status} Error:\n${text}`
+                answerEl.classList.remove('loading')
+                plotSectionEl.innerHTML = '<p class="error">Could not fetch answer</p>'
                 return
               }
               
@@ -76,13 +106,51 @@
                 data = await res.json()
               } catch (jsonErr) {
                 const text = await res.text()
-                out.textContent = `JSON Parse Error:\n${text}`
+                answerEl.textContent = `JSON Parse Error:\n${text}`
+                answerEl.classList.remove('loading')
+                plotSectionEl.innerHTML = '<p class="error">Invalid response format</p>'
                 return
               }
               
-              out.textContent = JSON.stringify(data, null, 2)
+              answerEl.textContent = JSON.stringify(data, null, 2)
+              answerEl.classList.remove('loading')
+              
+              // Try to fetch plot for financial metrics
+              try {
+                const plotRes = await fetch('/api/plot', {
+                  method: 'POST',
+                  headers: { 'Content-Type': 'application/json' },
+                  body: JSON.stringify({ user_id: 'web-demo', question: question }),
+                })
+                
+                if (plotRes.ok) {
+                  const plotData = await plotRes.json()
+                  
+                  if (plotData.plot_base64) {
+                    const imgSrc = `data:image/png;base64,${plotData.plot_base64}`
+                    plotSectionEl.innerHTML = `
+                      <div class="plot-container">
+                        <img src="${imgSrc}" alt="Financial Plot" />
+                        <div class="plot-meta">
+                          <strong>${plotData.company}</strong> — ${plotData.metric.replace(/_/g, ' ')}<br>
+                          Data points: ${plotData.data_points} | Trend: ${plotData.is_trend ? 'Yes' : 'No'}
+                        </div>
+                      </div>
+                    `
+                  } else if (plotData.error) {
+                    plotSectionEl.innerHTML = `<p class="error">Plot Error: ${plotData.message || 'Unknown error'}</p>`
+                  }
+                } else {
+                  plotSectionEl.innerHTML = '<p class="error">Could not generate plot (check DATABASE_URL)</p>'
+                }
+              } catch (plotErr) {
+                plotSectionEl.innerHTML = `<p class="error">Plot fetch failed: ${plotErr.message}</p>`
+              }
+              
             } catch (err) {
-              out.textContent = 'Network Error: ' + err.message
+              answerEl.textContent = 'Network Error: ' + err.message
+              answerEl.classList.remove('loading')
+              plotSectionEl.innerHTML = `<p class="error">Network error: ${err.message}</p>`
             }
           }
         </script>
