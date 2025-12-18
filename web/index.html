@@ -3,46 +3,18 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width,initial-scale=1" />
-    <title>Financial RAG — Demo</title>
-    <style>
-      :root{--bg:#f4f6f8;--top:#e9eef6;--tab-active:#fff;--muted:#6b7280}
-      body{font-family:Inter,Segoe UI,Arial,Helvetica,sans-serif;background:var(--bg);margin:18px}
-      .browser-frame{max-width:1200px;margin:12px auto;border-radius:12px;box-shadow:0 8px 28px rgba(16,24,40,0.08);overflow:hidden;background:var(--top)}
-      .browser-top{display:flex;flex-direction:column;padding:8px 12px;border-bottom:1px solid rgba(0,0,0,0.06);background:linear-gradient(#f7f9fc,var(--top))}
-      .tabs{display:flex;gap:8px;margin-bottom:8px}
-      .tab{padding:6px 12px;border-radius:6px;color:var(--muted);background:transparent;font-size:13px}
-      .tab.active{background:var(--tab-active);color:#111;box-shadow:0 1px 0 rgba(16,24,40,0.04) inset}
-      .address-toolbar{display:flex;align-items:center;gap:8px}
-      .icon-btn{background:transparent;border:none;padding:6px 8px;border-radius:6px;font-size:14px;cursor:pointer}
-      .address-bar{flex:1;background:#fff;padding:8px 12px;border-radius:8px;border:1px solid rgba(0,0,0,0.06);font-size:13px;color:#333}
-      .toolbar-actions{display:flex;gap:6px}
-      .browser-content{background:#fff;padding:20px;min-height:360px;display:grid;grid-template-columns:1fr 1fr;gap:20px}
-      .content-left{border-right:1px solid #e5e7eb;padding-right:20px}
-      .content-right{padding-left:20px}
-      h1{margin:0 0 8px 0;font-size:24px}
-      h2{margin:16px 0 8px 0;font-size:18px}
-      p{color:var(--muted)}
-      textarea{width:100%;height:120px;border-radius:8px;border:1px solid #e5e7eb;padding:10px;font-family:monospace}
-      button{padding:8px 12px;margin-top:8px;border-radius:8px;border:none;background:#2563eb;color:#fff;cursor:pointer;font-weight:500}
-      button:hover{background:#1d4ed8}
-      button:disabled{background:#9ca3af;cursor:not-allowed}
-      pre{background:#f6f8fa;padding:12px;border-radius:8px;white-space:pre-wrap;font-size:12px;max-height:300px;overflow-y:auto}
-      .plot-container{text-align:center}
-      .plot-container img{max-width:100%;height:auto;border-radius:8px;box-shadow:0 2px 8px rgba(0,0,0,0.1)}
-      .plot-meta{font-size:12px;color:var(--muted);margin-top:8px}
-      .loading{color:var(--muted);font-style:italic}
-      .error{color:#dc2626;padding:10px;background:#fee2e2;border-radius:6px;margin-top:8px}
-      .success{color:#059669;padding:10px;background:#d1fae5;border-radius:6px;margin-top:8px}
-      @media(max-width:960px){.browser-content{grid-template-columns:1fr}.content-left,.content-right{border:none;padding:0}}
-    </style>
+    <title>Financial RAG — S&P 500 Analytics Platform</title>
+    <link rel="stylesheet" href="/static/styles.css" />
   </head>
   <body>
     <div class="browser-frame">
       <div class="browser-top">
         <div class="tabs">
-          <div class="tab active">Financial RAG</div>
-          <div class="tab">Insights</div>
-          <div class="tab">Upload</div>
+          <div class="tab active" data-tab="rag">Financial RAG</div>
+          <div class="tab" data-tab="insights">Insights</div>
+          <div class="tab" data-tab="sp500">S&P 500 Analytics</div>
+          <div class="tab" data-tab="sp500-chat">S&P 500 Chat</div>
+          <div class="tab" data-tab="upload">Upload</div>
         </div>
         <div class="address-toolbar">
           <button class="icon-btn" title="Back">◀</button>
@@ -54,29 +26,267 @@
       </div>
 
       <div class="browser-content">
-        <div class="content-left">
-          <h1>Financial RAG — Demo</h1>
-          <p>Enter a finance question and press <strong>Ask</strong>.</p>
-          <textarea id="question" placeholder="What are Apple's main products? Show me Apple revenue growth trend">Show me Apple revenue growth trend</textarea>
-          <br />
-          <button id="ask">Ask</button>
-          <h2>Answer</h2>
-          <pre id="answer" class="loading">(waiting)</pre>
+        <!-- Financial RAG Tab -->
+        <div id="tab-rag" class="tab-content">
+          <div class="grid-2">
+            <div class="card">
+              <div class="card-header">
+                <h1 class="card-title">Financial RAG — S&P 500</h1>
+                <p class="card-subtitle">Ask questions about S&P 500 companies using AI</p>
+              </div>
+              
+              <h3>Quick Company Links</h3>
+              <div id="sp500-companies-list" style="display:grid;grid-template-columns:repeat(2,1fr);gap:8px;margin-bottom:16px">
+                <p class="loading" style="grid-column:1/-1">Loading companies...</p>
+              </div>
+              
+              <label for="question">Your Question</label>
+              <textarea id="question" placeholder="What are the top S&P 500 companies? Tell me about Apple. Show me Tesla performance.">What are the top S&P 500 companies?</textarea>
+              <button id="ask" class="mt-4">Ask Question</button>
+              
+              <h2>Answer</h2>
+              <pre id="answer" class="loading">(waiting)</pre>
+            </div>
+            
+            <div class="card">
+              <div class="card-header">
+                <h2 class="card-title">Financial Plot</h2>
+                <p class="card-subtitle">Visual analysis of metrics and trends</p>
+              </div>
+              <div id="plot-section">
+                <p class="loading">Plot will appear here when you ask about financial metrics...</p>
+              </div>
+            </div>
+          </div>
         </div>
 
-        <div class="content-right">
-          <h2>Financial Plot</h2>
-          <div id="plot-section">
-            <p class="loading">Plot will appear here when you ask about financial metrics...</p>
+        <!-- Insights Tab -->
+        <div id="tab-insights" class="tab-content hidden">
+          <div class="card">
+            <div class="card-header">
+              <h1 class="card-title">Financial Insights Dashboard</h1>
+              <p class="card-subtitle">Analytics and trends from your financial data</p>
+            </div>
+            
+            <div id="insights-summary">
+              <p class="loading">Loading insights...</p>
+            </div>
           </div>
+          
+          <div id="insights-charts">
+            <div class="card mt-4">
+              <h2>Revenue Leaders</h2>
+              <div class="table-wrapper">
+                <div id="revenue-leaders"></div>
+              </div>
+            </div>
+            
+            <div class="card mt-4">
+              <h2>Profitability Analysis</h2>
+              <div class="table-wrapper">
+                <div id="profitability-metrics"></div>
+              </div>
+            </div>
+            
+            <div class="card mt-4">
+              <h2>Company Comparison</h2>
+              <div class="table-wrapper">
+                <div id="company-comparison"></div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- S&P 500 Analytics Tab -->
+        <div id="tab-sp500" class="tab-content hidden">
+          <div class="card mb-4">
+            <div class="card-header">
+              <h1 class="card-title">S&P 500 Historical Analytics</h1>
+              <p class="card-subtitle">Interactive visualizations and analysis of 150+ years of S&P 500 data</p>
+            </div>
+            
+            <div style="display:flex;gap:var(--space-4);margin-bottom:var(--space-4);flex-wrap:wrap;align-items:flex-end">
+              <div>
+                <label for="sp500-start-date">Start Date</label>
+                <input type="date" id="sp500-start-date" />
+              </div>
+              <div>
+                <label for="sp500-end-date">End Date</label>
+                <input type="date" id="sp500-end-date" />
+              </div>
+              <div>
+                <label>Metrics</label>
+                <div style="display:flex;gap:var(--space-3);flex-wrap:wrap;margin-top:var(--space-2)">
+                  <label style="font-weight:normal"><input type="checkbox" value="sp500" checked /> S&P 500</label>
+                  <label style="font-weight:normal"><input type="checkbox" value="dividend" /> Dividend</label>
+                  <label style="font-weight:normal"><input type="checkbox" value="earnings" /> Earnings</label>
+                  <label style="font-weight:normal"><input type="checkbox" value="real_price" /> Real Price</label>
+                  <label style="font-weight:normal"><input type="checkbox" value="pe10" /> PE10</label>
+                </div>
+              </div>
+              <button id="sp500-refresh" class="btn-accent">Refresh Charts</button>
+            </div>
+          </div>
+          
+          <div id="sp500-summary" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:12px;margin-bottom:20px">
+            <div class="metric-card" style="background:linear-gradient(135deg,#667eea 0%,#764ba2 100%)">
+              <h3>Latest S&P 500</h3>
+              <div class="value" id="latest-sp500">-</div>
+            </div>
+            <div class="metric-card" style="background:linear-gradient(135deg,#f093fb 0%,#f5576c 100%)">
+              <h3>Date Range</h3>
+              <div class="value" style="font-size:14px" id="date-range">-</div>
+            </div>
+            <div class="metric-card" style="background:linear-gradient(135deg,#4facfe 0%,#00f2fe 100%)">
+              <h3>Avg PE10</h3>
+              <div class="value" id="avg-pe10">-</div>
+            </div>
+          </div>
+          
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:20px;margin-bottom:20px">
+            <div class="chart-container">
+              <h3 style="margin:0 0 12px 0">S&P 500 Price History</h3>
+              <canvas id="sp500-price-chart"></canvas>
+            </div>
+            <div class="chart-container">
+              <h3 style="margin:0 0 12px 0">Decade Performance</h3>
+              <canvas id="sp500-decade-chart"></canvas>
+            </div>
+          </div>
+          
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:20px">
+            <div class="chart-container">
+              <h3 style="margin:0 0 12px 0">Year-over-Year Growth</h3>
+              <canvas id="sp500-yoy-chart"></canvas>
+            </div>
+            <div class="chart-container">
+              <h3 style="margin:0 0 12px 0">Correlation Matrix</h3>
+              <div id="correlation-table"></div>
+            </div>
+          </div>
+        </div>
+
+        <!-- S&P 500 Chat Tab -->
+        <div id="tab-sp500-chat" class="tab-content hidden">
+          <h1>S&P 500 Smart Chat</h1>
+          <p>Ask questions about S&P 500 data using natural language</p>
+          
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:20px">
+            <div style="border-right:1px solid #e5e7eb;padding-right:20px">
+              <h2>Ask a Question</h2>
+              <textarea id="sp500-question" placeholder="e.g., What was the S&P 500 performance in the 2000s? Show me the volatility analysis. How did dividends correlate with price changes?" style="width:100%;height:120px;border-radius:8px;border:1px solid #e5e7eb;padding:10px;font-family:monospace"></textarea>
+              <button id="sp500-ask-btn" style="width:100%;margin-top:8px">Ask</button>
+              
+              <h2 style="margin-top:20px">Quick Questions</h2>
+              <div style="display:grid;grid-template-columns:1fr;gap:8px">
+                <button class="quick-question" data-q="What is the overall trend of the S&P 500?" style="padding:10px;background:#f3f4f6;border:1px solid #e5e7eb;border-radius:6px;cursor:pointer;text-align:left">📈 Overall Trend</button>
+                <button class="quick-question" data-q="Show me year-over-year growth rates" style="padding:10px;background:#f3f4f6;border:1px solid #e5e7eb;border-radius:6px;cursor:pointer;text-align:left">📊 YoY Growth</button>
+                <button class="quick-question" data-q="How volatile is the S&P 500?" style="padding:10px;background:#f3f4f6;border:1px solid #e5e7eb;border-radius:6px;cursor:pointer;text-align:left">⚡ Volatility</button>
+                <button class="quick-question" data-q="What are the correlations between S&P 500 and other metrics?" style="padding:10px;background:#f3f4f6;border:1px solid #e5e7eb;border-radius:6px;cursor:pointer;text-align:left">🔗 Correlations</button>
+                <button class="quick-question" data-q="Compare performance across decades" style="padding:10px;background:#f3f4f6;border:1px solid #e5e7eb;border-radius:6px;cursor:pointer;text-align:left">📅 Decades</button>
+              </div>
+            </div>
+            
+            <div style="padding-left:20px">
+              <h2>Analysis Response</h2>
+              <pre id="sp500-response" style="background:#f6f8fa;padding:12px;border-radius:8px;white-space:pre-wrap;font-size:12px;max-height:500px;overflow-y:auto;border:1px solid #e5e7eb" class="loading">(Response will appear here)</pre>
+              
+              <h2 style="margin-top:20px">Suggested Visualization</h2>
+              <div id="sp500-chart-suggestion" style="background:#f9fafb;padding:12px;border-radius:8px;border:1px solid #e5e7eb;font-size:12px;color:#6b7280">
+                <p style="margin:0">Chart type: <strong id="suggested-chart">Line Chart</strong></p>
+                <p style="margin:8px 0 0 0">Metrics: <strong id="suggested-metrics">S&P 500</strong></p>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Upload Tab -->
+        <div id="tab-upload" class="tab-content hidden">
+          <h1>Upload Financial Data</h1>
+          <p>Upload CSV or Excel files with your financial metrics</p>
+          
+          <div class="upload-zone" id="upload-zone">
+            <input type="file" id="file-input" accept=".csv,.xlsx,.xls" />
+            <p style="font-size:48px;margin:0">📊</p>
+            <p><strong>Click to browse</strong> or drag and drop your file here</p>
+            <p style="font-size:12px;color:var(--muted)">Supported formats: CSV, Excel (.xlsx, .xls)</p>
+          </div>
+          
+          <div id="upload-preview" class="hidden">
+            <h2>Data Preview</h2>
+            <div id="preview-info"></div>
+            <button id="ingest-btn">Ingest to Database</button>
+          </div>
+          
+          <div id="upload-status"></div>
         </div>
       </div>
 
+        <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
         <script>
+          // Tab switching
+          const tabs = document.querySelectorAll('.tab')
+          const tabContents = document.querySelectorAll('.tab-content')
+          
+          tabs.forEach(tab => {
+            tab.addEventListener('click', () => {
+              const tabName = tab.getAttribute('data-tab')
+              
+              // Update active tab
+              tabs.forEach(t => t.classList.remove('active'))
+              tab.classList.add('active')
+              
+              // Show corresponding content
+              tabContents.forEach(content => {
+                if (content.id === `tab-${tabName}`) {
+                  content.classList.remove('hidden')
+                  
+                  // Load data when switching to insights
+                  if (tabName === 'insights') {
+                    loadInsights()
+                  }
+                  // Load S&P 500 data when switching to sp500 tab
+                  if (tabName === 'sp500') {
+                    loadSP500Dashboard()
+                  }
+                } else {
+                  content.classList.add('hidden')
+                }
+              })
+            })
+          })
+
+          // RAG Tab functionality
           const askBtn = document.getElementById('ask')
           const qEl = document.getElementById('question')
           const answerEl = document.getElementById('answer')
           const plotSectionEl = document.getElementById('plot-section')
+
+          // Load S&P 500 companies list
+          async function loadSP500Companies() {
+            try {
+              const res = await fetch('/api/sp500/companies?limit=20')
+              const data = await res.json()
+              
+              if (data.success && data.companies && data.companies.length > 0) {
+                const listEl = document.getElementById('sp500-companies-list')
+                let html = ''
+                
+                data.companies.forEach(company => {
+                  html += `<button class="company-btn" onclick="document.getElementById('question').value = '${company.name} (${company.ticker})'; document.getElementById('ask').click();" style="padding:8px;background:#f0f4ff;border:1px solid #cbd5e1;border-radius:6px;cursor:pointer;font-size:12px">
+                    <strong>${company.ticker}</strong> ${company.name.substring(0, 20)}...
+                  </button>`
+                })
+                
+                listEl.innerHTML = html
+              }
+            } catch (err) {
+              console.error('Error loading companies:', err)
+            }
+          }
+          
+          // Load companies on page load
+          loadSP500Companies()
 
           askBtn.onclick = async () => {
             answerEl.textContent = 'Loading...'
@@ -151,6 +361,507 @@
               answerEl.textContent = 'Network Error: ' + err.message
               answerEl.classList.remove('loading')
               plotSectionEl.innerHTML = `<p class="error">Network error: ${err.message}</p>`
+            }
+          }
+
+          // Upload Tab functionality
+          const uploadZone = document.getElementById('upload-zone')
+          const fileInput = document.getElementById('file-input')
+          const uploadPreview = document.getElementById('upload-preview')
+          const previewInfo = document.getElementById('preview-info')
+          const uploadStatus = document.getElementById('upload-status')
+          const ingestBtn = document.getElementById('ingest-btn')
+          
+          let currentFile = null
+
+          uploadZone.onclick = () => fileInput.click()
+          
+          uploadZone.ondragover = (e) => {
+            e.preventDefault()
+            uploadZone.classList.add('drag-over')
+          }
+          
+          uploadZone.ondragleave = () => {
+            uploadZone.classList.remove('drag-over')
+          }
+          
+          uploadZone.ondrop = (e) => {
+            e.preventDefault()
+            uploadZone.classList.remove('drag-over')
+            const file = e.dataTransfer.files[0]
+            if (file) {
+              handleFileUpload(file)
+            }
+          }
+          
+          fileInput.onchange = (e) => {
+            const file = e.target.files[0]
+            if (file) {
+              handleFileUpload(file)
+            }
+          }
+          
+          async function handleFileUpload(file) {
+            currentFile = file
+            uploadStatus.innerHTML = '<p class="loading">Uploading and parsing file...</p>'
+            
+            try {
+              const formData = new FormData()
+              formData.append('file', file)
+              
+              const res = await fetch('/api/upload/file', {
+                method: 'POST',
+                body: formData
+              })
+              
+              const data = await res.json()
+              
+              if (!res.ok) {
+                uploadStatus.innerHTML = `<p class="error">${data.error}</p>`
+                return
+              }
+              
+              // Show preview
+              const preview = data.preview
+              let html = `<div class="success">File parsed: ${data.filename}</div>`
+              html += `<p><strong>Rows:</strong> ${preview.row_count} | <strong>Columns:</strong> ${preview.columns.length}</p>`
+              html += `<p><strong>Detected Schema:</strong> ${Object.keys(preview.detected_schema).join(', ') || 'None'}</p>`
+              html += '<h3>Sample Data:</h3>'
+              html += '<table><thead><tr>'
+              
+              preview.columns.forEach(col => {
+                html += `<th>${col}</th>`
+              })
+              html += '</tr></thead><tbody>'
+              
+              preview.sample_rows.slice(0, 5).forEach(row => {
+                html += '<tr>'
+                preview.columns.forEach(col => {
+                  html += `<td>${row[col] !== null ? row[col] : ''}</td>`
+                })
+                html += '</tr>'
+              })
+              html += '</tbody></table>'
+              
+              previewInfo.innerHTML = html
+              uploadPreview.classList.remove('hidden')
+              uploadStatus.innerHTML = ''
+              
+            } catch (err) {
+              uploadStatus.innerHTML = `<p class="error">Upload failed: ${err.message}</p>`
+            }
+          }
+          
+          ingestBtn.onclick = async () => {
+            if (!currentFile) return
+            
+            uploadStatus.innerHTML = '<p class="loading">Ingesting data into database...</p>'
+            
+            try {
+              const formData = new FormData()
+              formData.append('file', currentFile)
+              
+              const res = await fetch('/api/upload/ingest', {
+                method: 'POST',
+                body: formData
+              })
+              
+              const data = await res.json()
+              
+              if (!res.ok) {
+                uploadStatus.innerHTML = `<p class="error">${data.error}</p>`
+                return
+              }
+              
+              uploadStatus.innerHTML = `
+                <div class="success">
+                  <strong>✓ Data ingested successfully!</strong><br>
+                  Rows inserted: ${data.rows_inserted}<br>
+                  Companies: ${data.companies.join(', ')}
+                </div>
+              `
+              
+              // Reset form
+              setTimeout(() => {
+                uploadPreview.classList.add('hidden')
+                currentFile = null
+                fileInput.value = ''
+              }, 2000)
+              
+            } catch (err) {
+              uploadStatus.innerHTML = `<p class="error">Ingestion failed: ${err.message}</p>`
+            }
+          }
+
+          // Insights Tab functionality
+          async function loadInsights() {
+            const summaryEl = document.getElementById('insights-summary')
+            const revenueEl = document.getElementById('revenue-leaders')
+            const profitEl = document.getElementById('profitability-metrics')
+            const comparisonEl = document.getElementById('company-comparison')
+            
+            try {
+              // Load summary
+              const summaryRes = await fetch('/api/insights/summary')
+              const summary = await summaryRes.json()
+              
+              if (summary.error) {
+                summaryEl.innerHTML = `<p class="error">${summary.error}</p>`
+              } else {
+                summaryEl.innerHTML = `
+                  <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:12px">
+                    <div class="metric-card">
+                      <h3>Companies</h3>
+                      <div class="value">${summary.company_count}</div>
+                    </div>
+                    <div class="metric-card" style="background:linear-gradient(135deg,#f093fb 0%,#f5576c 100%)">
+                      <h3>Data Points</h3>
+                      <div class="value">${summary.metrics_count}</div>
+                    </div>
+                    <div class="metric-card" style="background:linear-gradient(135deg,#4facfe 0%,#00f2fe 100%)">
+                      <h3>Date Range</h3>
+                      <div class="value" style="font-size:14px">${summary.date_range?.earliest || 'N/A'} - ${summary.date_range?.latest || 'N/A'}</div>
+                    </div>
+                  </div>
+                `
+              }
+              
+              // Load revenue leaders
+              const revenueRes = await fetch('/api/insights/revenue-leaders?limit=10')
+              const revenueData = await revenueRes.json()
+              
+              if (revenueData.leaders && revenueData.leaders.length > 0) {
+                let html = '<table><thead><tr><th>Ticker</th><th>Name</th><th>Period</th><th>Revenue</th></tr></thead><tbody>'
+                revenueData.leaders.forEach(item => {
+                  html += `<tr>
+                    <td><strong>${item.ticker}</strong></td>
+                    <td>${item.name}</td>
+                    <td>${item.period}</td>
+                    <td>$${(item.revenue / 1000).toFixed(1)}K</td>
+                  </tr>`
+                })
+                html += '</tbody></table>'
+                revenueEl.innerHTML = html
+              } else {
+                revenueEl.innerHTML = '<p class="loading">No data available</p>'
+              }
+              
+              // Load profitability
+              const profitRes = await fetch('/api/insights/profitability?limit=10')
+              const profitData = await profitRes.json()
+              
+              if (profitData.metrics && profitData.metrics.length > 0) {
+                let html = '<table><thead><tr><th>Ticker</th><th>Revenue</th><th>Net Income</th><th>Margin %</th></tr></thead><tbody>'
+                profitData.metrics.forEach(item => {
+                  html += `<tr>
+                    <td><strong>${item.ticker}</strong></td>
+                    <td>$${(item.revenue / 1000).toFixed(1)}K</td>
+                    <td>$${(item.net_income / 1000).toFixed(1)}K</td>
+                    <td>${item.profit_margin.toFixed(2)}%</td>
+                  </tr>`
+                })
+                html += '</tbody></table>'
+                profitEl.innerHTML = html
+              } else {
+                profitEl.innerHTML = '<p class="loading">No data available</p>'
+              }
+              
+              // Load comparison
+              const comparisonRes = await fetch('/api/insights/comparison')
+              const comparisonData = await comparisonRes.json()
+              
+              if (comparisonData.companies && comparisonData.companies.length > 0) {
+                let html = '<table><thead><tr><th>Ticker</th><th>Avg Revenue</th><th>Avg Income</th><th>Avg Margin %</th><th>Data Points</th></tr></thead><tbody>'
+                comparisonData.companies.forEach(item => {
+                  html += `<tr>
+                    <td><strong>${item.ticker}</strong></td>
+                    <td>$${(item.avg_revenue / 1000).toFixed(1)}K</td>
+                    <td>$${(item.avg_net_income / 1000).toFixed(1)}K</td>
+                    <td>${item.avg_margin.toFixed(2)}%</td>
+                    <td>${item.data_points}</td>
+                  </tr>`
+                })
+                html += '</tbody></table>'
+                comparisonEl.innerHTML = html
+              } else {
+                comparisonEl.innerHTML = '<p class="loading">No data available</p>'
+              }
+              
+            } catch (err) {
+              summaryEl.innerHTML = `<p class="error">Failed to load insights: ${err.message}</p>`
+            }
+          }
+
+          // ==================== S&P 500 Dashboard ====================
+          let priceChart = null
+          let decadeChart = null
+          let yoyChart = null
+          
+          async function loadSP500Dashboard() {
+            try {
+              // Load summary
+              const summaryRes = await fetch('/api/sp500/summary')
+              const summaryData = await summaryRes.json()
+              
+              if (summaryData.success) {
+                document.getElementById('latest-sp500').textContent = summaryData.latest_values?.sp500?.toFixed(2) || '-'
+                document.getElementById('date-range').textContent = 
+                  `${summaryData.date_range?.earliest || '-'} to ${summaryData.date_range?.latest || '-'}`
+                document.getElementById('avg-pe10').textContent = summaryData.statistics?.pe10?.avg?.toFixed(2) || '-'
+              }
+              
+              // Load time series for price chart
+              await loadPriceChart()
+              
+              // Load decade performance
+              await loadDecadeChart()
+              
+              // Load YoY growth
+              await loadYoYChart()
+              
+              // Load correlations
+              await loadCorrelations()
+              
+            } catch (err) {
+              console.error('Failed to load S&P 500 dashboard:', err)
+            }
+          }
+          
+          async function loadPriceChart() {
+            const res = await fetch('/api/sp500/timeseries?limit=500')
+            const data = await res.json()
+            
+            if (!data.success || !data.data || data.data.length === 0) {
+              return
+            }
+            
+            const ctx = document.getElementById('sp500-price-chart').getContext('2d')
+            
+            if (priceChart) {
+              priceChart.destroy()
+            }
+            
+            priceChart = new Chart(ctx, {
+              type: 'line',
+              data: {
+                labels: data.data.map(d => d.date),
+                datasets: [{
+                  label: 'S&P 500',
+                  data: data.data.map(d => d.sp500),
+                  borderColor: '#2563eb',
+                  backgroundColor: 'rgba(37, 99, 235, 0.1)',
+                  fill: true,
+                  tension: 0.4,
+                  pointRadius: 0,
+                  borderWidth: 2
+                }]
+              },
+              options: {
+                responsive: true,
+                maintainAspectRatio: true,
+                aspectRatio: 2,
+                plugins: {
+                  legend: {
+                    display: false
+                  }
+                },
+                scales: {
+                  x: {
+                    display: true,
+                    ticks: {
+                      maxTicksLimit: 10
+                    }
+                  },
+                  y: {
+                    display: true,
+                    beginAtZero: false
+                  }
+                }
+              }
+            })
+          }
+          
+          async function loadDecadeChart() {
+            const res = await fetch('/api/sp500/decades')
+            const data = await res.json()
+            
+            if (!data.success || !data.decades || data.decades.length === 0) {
+              return
+            }
+            
+            const ctx = document.getElementById('sp500-decade-chart').getContext('2d')
+            
+            if (decadeChart) {
+              decadeChart.destroy()
+            }
+            
+            decadeChart = new Chart(ctx, {
+              type: 'bar',
+              data: {
+                labels: data.decades.map(d => `${d.decade}s`),
+                datasets: [{
+                  label: 'Avg S&P 500',
+                  data: data.decades.map(d => d.avg_sp500),
+                  backgroundColor: 'rgba(147, 51, 234, 0.8)',
+                  borderColor: '#9333ea',
+                  borderWidth: 1
+                }]
+              },
+              options: {
+                responsive: true,
+                maintainAspectRatio: true,
+                aspectRatio: 2,
+                plugins: {
+                  legend: {
+                    display: false
+                  }
+                },
+                scales: {
+                  y: {
+                    beginAtZero: true
+                  }
+                }
+              }
+            })
+          }
+          
+          async function loadYoYChart() {
+            const res = await fetch('/api/sp500/yoy-growth')
+            const data = await res.json()
+            
+            if (!data.success || !data.growth || data.growth.length === 0) {
+              return
+            }
+            
+            const ctx = document.getElementById('sp500-yoy-chart').getContext('2d')
+            
+            if (yoyChart) {
+              yoyChart.destroy()
+            }
+            
+            yoyChart = new Chart(ctx, {
+              type: 'line',
+              data: {
+                labels: data.growth.map(d => d.year),
+                datasets: [{
+                  label: 'YoY Growth %',
+                  data: data.growth.map(d => d.yoy_growth),
+                  borderColor: '#10b981',
+                  backgroundColor: 'rgba(16, 185, 129, 0.1)',
+                  fill: true,
+                  tension: 0.4,
+                  pointRadius: 0,
+                  borderWidth: 2
+                }]
+              },
+              options: {
+                responsive: true,
+                maintainAspectRatio: true,
+                aspectRatio: 2,
+                plugins: {
+                  legend: {
+                    display: false
+                  }
+                },
+                scales: {
+                  x: {
+                    display: true,
+                    ticks: {
+                      maxTicksLimit: 10
+                    }
+                  },
+                  y: {
+                    display: true
+                  }
+                }
+              }
+            })
+          }
+          
+          async function loadCorrelations() {
+            const res = await fetch('/api/sp500/correlations')
+            const data = await res.json()
+            
+            if (!data.success || !data.correlations) {
+              return
+            }
+            
+            const tableEl = document.getElementById('correlation-table')
+            let html = '<table><thead><tr><th>Metric</th><th>Correlation with S&P 500</th></tr></thead><tbody>'
+            
+            for (const [metric, corr] of Object.entries(data.correlations)) {
+              const corrValue = corr?.toFixed(3) || 'N/A'
+              html += `<tr>
+                <td><strong>${metric.replace(/_/g, ' ').toUpperCase()}</strong></td>
+                <td>${corrValue}</td>
+              </tr>`
+            }
+            
+            html += '</tbody></table>'
+            tableEl.innerHTML = html
+          }
+          
+          // Refresh button handler
+          document.getElementById('sp500-refresh')?.addEventListener('click', () => {
+            loadSP500Dashboard()
+          })
+
+          // ==================== S&P 500 Chat Functionality ====================
+          
+          const sp500QuestionEl = document.getElementById('sp500-question')
+          const sp500AskBtn = document.getElementById('sp500-ask-btn')
+          const sp500ResponseEl = document.getElementById('sp500-response')
+          
+          sp500AskBtn.onclick = async () => {
+            await askSP500Question(sp500QuestionEl.value)
+          }
+          
+          // Quick question buttons
+          document.querySelectorAll('.quick-question').forEach(btn => {
+            btn.addEventListener('click', async () => {
+              sp500QuestionEl.value = btn.getAttribute('data-q')
+              await askSP500Question(btn.getAttribute('data-q'))
+            })
+          })
+          
+          async function askSP500Question(question) {
+            sp500ResponseEl.textContent = 'Processing your question...'
+            sp500ResponseEl.classList.add('loading')
+            
+            try {
+              // Get LLM analysis
+              const analysisRes = await fetch('/api/sp500/ask', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ user_id: 'web-demo', question: question })
+              })
+              
+              const analysisData = await analysisRes.json()
+              
+              if (analysisData.success) {
+                sp500ResponseEl.textContent = analysisData.answer
+                sp500ResponseEl.classList.remove('loading')
+              } else {
+                sp500ResponseEl.textContent = `Error: ${analysisData.error || 'Unknown error'}`
+              }
+              
+              // Get chart parameters
+              const chartRes = await fetch('/api/sp500/chart-params', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ user_id: 'web-demo', question: question })
+              })
+              
+              const chartData = await chartRes.json()
+              
+              if (chartData.success) {
+                document.getElementById('suggested-chart').textContent = chartData.chart_type.toUpperCase()
+                document.getElementById('suggested-metrics').textContent = (chartData.metrics || ['sp500']).join(', ').toUpperCase()
+              }
+              
+            } catch (err) {
+              sp500ResponseEl.textContent = `Error: ${err.message}`
+              sp500ResponseEl.classList.remove('loading')
             }
           }
         </script>

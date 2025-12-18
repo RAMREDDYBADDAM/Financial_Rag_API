@@ -9,7 +9,8 @@ pydantic-settings
 langchain 
 langchain-openai 
 langchain-community 
-langchain-ollama
+langchain-ollama==0.3.10
+langchain-core==0.3.80
 anyio
  
 # Vector store 
@@ -28,3 +29,7 @@ unstructured
 
 # Plotting / visualization
 matplotlib
+
+# Data processing
+pandas
+openpyxl

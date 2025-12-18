@@ -1,8 +1,8 @@
 """
 Financial Metrics Plot Generator
 
-Extracts company ticker and financial metric from RAG output,
-queries PostgreSQL, generates matplotlib plots, and returns base64-encoded JSON.
+Generates matplotlib plots from S&P 500 historical data (CSV-based).
+No external database required - uses local CSV fallback with sample data.
 """
 
 import re
@@ -10,20 +10,35 @@ import json
 import base64
 from io import BytesIO
 from typing import Dict, Any, Optional, Tuple, List
-import psycopg2
-from psycopg2.extras import RealDictCursor
+import matplotlib
+matplotlib.use('Agg')  # Use non-GUI backend to avoid threading issues in async context
 import matplotlib.pyplot as plt
 from app.config import settings
 from app.core.llm import get_llm
-import json
+import os
+
+# Import S&P 500 analytics to get historical data
+try:
+    from app.core.sp500_analytics import (
+        get_sp500_summary,
+        get_time_series_data,
+        get_sp500_growth_analysis,
+        get_sp500_data,
+        get_volatility_analysis,
+        get_decade_performance,
+        get_year_over_year_growth,
+    )
+    SP500_ANALYTICS_AVAILABLE = True
+except ImportError as e:
+    print(f"Warning: Could not import all sp500_analytics functions: {e}")
+    SP500_ANALYTICS_AVAILABLE = False
 
 
 # ============================================================================
-# Entity Extraction from RAG Output
+# Constants for Entity Extraction
 # ============================================================================
 
 COMPANY_TICKERS = ["AAPL", "MSFT", "GOOGL", "TSLA", "AMZN", "META", "NVDA"]
-# Simple mapping of common company names to tickers to help extraction from narrative text
 COMPANY_MAP = {
     "AAPL": "Apple",
     "MSFT": "Microsoft",
@@ -33,8 +48,6 @@ COMPANY_MAP = {
     "META": "Meta",
     "NVDA": "NVIDIA",
 }
-
-# Precompute lowercase name->ticker map for fast matching
 NAME_TO_TICKER = {v.lower(): k for k, v in COMPANY_MAP.items()}
 FINANCIAL_METRICS = [
     "revenue",
@@ -45,24 +58,6 @@ FINANCIAL_METRICS = [
     "total_liabilities",
     "equity",
 ]
-
-# Small demo fallback series used when DATABASE_URL isn't configured or DB lookup fails
-SAMPLE_SERIES = {
-    ("AAPL", "revenue"): [
-        ("Q1 2023", 90000.0),
-        ("Q2 2023", 92000.0),
-        ("Q3 2023", 94000.0),
-        ("Q4 2023", 96000.0),
-        ("Q1 2024", 94700.0),
-    ],
-    ("MSFT", "net_income"): [
-        ("Q1 2023", 12000.0),
-        ("Q2 2023", 12500.0),
-        ("Q3 2023", 13000.0),
-        ("Q4 2023", 13500.0),
-        ("Q1 2024", 13800.0),
-    ],
-}
 
 
 def extract_plot_params(text: str) -> Optional[Dict[str, Any]]:
@@ -101,8 +96,10 @@ def extract_plot_params(text: str) -> Optional[Dict[str, Any]]:
     trend_keywords = ["trend", "growth", "over time", "historical", "compare", "change"]
     is_trend = any(kw in text_lower for kw in trend_keywords)
 
-    if not company or not metric:
-        return None
+    if not company:
+        company = "SP500"
+    if not metric:
+        metric = "close"
 
     return {
         "company": company,
@@ -221,85 +218,51 @@ def _llm_synthesize_series_sync(company: str, metric: str, points: int = 5) -> O
 
 
 # ============================================================================
-# Database Query Functions
+# S&P 500 Data Functions (CSV-based, no DB required)
 # ============================================================================
 
-
-def _get_db_connection():
-    """Create and return a PostgreSQL connection using DATABASE_URL."""
-    if not settings.database_url:
-        raise ValueError("DATABASE_URL not configured in .env or settings")
-    return psycopg2.connect(settings.database_url)
-
-
-def fetch_company_id(ticker: str) -> Optional[int]:
-    """Fetch the company ID from the companies table."""
+def _get_sp500_plot_data() -> Optional[List[Tuple[str, float]]]:
+    """Get S&P 500 historical data as time-series for plotting."""
+    if not SP500_ANALYTICS_AVAILABLE:
+        return None
+    
     try:
-        conn = _get_db_connection()
-        cursor = conn.cursor()
-        cursor.execute("SELECT id FROM companies WHERE ticker = %s;", (ticker.upper(),))
-        result = cursor.fetchone()
-        cursor.close()
-        conn.close()
-        return result[0] if result else None
+        # Get S&P 500 timeseries data using get_time_series_data
+        ts_result = get_time_series_data(
+            start_date=None,
+            end_date=None,
+            metrics=["date", "sp500"],
+            limit=200
+        )
+        
+        if ts_result.get("success") and "data" in ts_result:
+            data_rows = ts_result["data"]
+            # Build list of (date_str, sp500_value) tuples
+            series = []
+            for row in data_rows:
+                date_val = row.get("date")
+                sp500_val = row.get("sp500")
+                if date_val and sp500_val is not None:
+                    series.append((str(date_val), float(sp500_val)))
+            
+            # Return tail of 100-200 points
+            return series[-150:] if len(series) > 150 else series
     except Exception as e:
-        print(f"Error fetching company ID: {e}")
-        return None
+        print(f"Error fetching S&P 500 data: {e}")
+    
+    return None
 
 
-def fetch_metric_series(
-    company_id: int, metric: str, latest_only: bool = False
-) -> Optional[List[Tuple[str, float]]]:
-    """
-    Fetch financial metric time-series from the database.
-
-    Args:
-        company_id: ID of the company
-        metric: Financial metric name (e.g., "revenue", "net_income")
-        latest_only: If True, return only the latest value; if False, return full time-series
-
-    Returns:
-        List of tuples (period, value) sorted by period
-        or None if query fails or metric not found
-    """
-    if metric not in FINANCIAL_METRICS:
-        print(f"Invalid metric: {metric}")
-        return None
-
-    try:
-        conn = _get_db_connection()
-        cursor = conn.cursor(cursor_factory=RealDictCursor)
-
-        if latest_only:
-            query = f"""
-                SELECT period, {metric}
-                FROM financial_metrics
-                WHERE company_id = %s AND {metric} IS NOT NULL
-                ORDER BY period DESC
-                LIMIT 1;
-            """
-        else:
-            query = f"""
-                SELECT period, {metric}
-                FROM financial_metrics
-                WHERE company_id = %s AND {metric} IS NOT NULL
-                ORDER BY period ASC;
-            """
-
-        cursor.execute(query, (company_id,))
-        rows = cursor.fetchall()
-        cursor.close()
-        conn.close()
-
-        if not rows:
-            return None
-
-        # Convert to list of tuples (period, value)
-        return [(row["period"], float(row[metric])) for row in rows]
-
-    except Exception as e:
-        print(f"Error fetching metric series: {e}")
-        return None
+# Small fallback sample series if CSV not available
+SAMPLE_SERIES = {
+    ("SP500", "close"): [
+        ("2023-Q1", 3750.0),
+        ("2023-Q2", 3850.0),
+        ("2023-Q3", 4000.0),
+        ("2023-Q4", 4100.0),
+        ("2024-Q1", 4200.0),
+    ],
+}
 
 
 # ============================================================================
@@ -313,8 +276,8 @@ def plot_metric(series: List[Tuple[str, float]], company: str, metric: str) -> s
 
     Args:
         series: List of (period, value) tuples
-        company: Company ticker
-        metric: Financial metric name
+        company: Company ticker or description
+        metric: Metric name
 
     Returns:
         Base64-encoded PNG string
@@ -344,6 +307,7 @@ def plot_metric(series: List[Tuple[str, float]], company: str, metric: str) -> s
     return plot_base64
 
 
+
 # ============================================================================
 # Main Orchestrator
 # ============================================================================
@@ -352,6 +316,8 @@ def plot_metric(series: List[Tuple[str, float]], company: str, metric: str) -> s
 def generate_plot_from_rag_output(rag_text: str) -> Optional[Dict[str, Any]]:
     """
     Complete pipeline: extract params → fetch data → plot → return JSON.
+    
+    Uses S&P 500 historical data (CSV-based) - no external database required.
 
     Args:
         rag_text: Natural-language output from RAG model
@@ -373,40 +339,23 @@ def generate_plot_from_rag_output(rag_text: str) -> Optional[Dict[str, Any]]:
     metric = params["metric"]
     is_trend = params.get("is_trend", True)
 
-    # Step 2: Fetch company ID
-    company_id = fetch_company_id(company)
+    # Step 2: Try to fetch S&P 500 data
+    series = _get_sp500_plot_data()
+    if not series:
+        # Try sample fallback if S&P 500 data unavailable
+        series = SAMPLE_SERIES.get(("SP500", "close"))
+        if not series:
+            print(f"Could not fetch plot data for {company}")
+            return None
 
-    # If DB is not configured or company not found, attempt to use a demo sample series
-    if not company_id:
-        print(f"Company {company} not found in database or DATABASE_URL missing — trying fallbacks")
-        series = SAMPLE_SERIES.get((company, metric))
-        if not series:
-            # As a more flexible fallback, ask the LLM to synthesize a plausible series
-            series = _llm_synthesize_series_sync(company, metric)
-            if not series:
-                return None
-    else:
-        # Step 3: Fetch metric series
-        latest_only = not is_trend
-        series = fetch_metric_series(company_id, metric, latest_only=latest_only)
-        if not series:
-            # Try sample fallback if DB had no rows for this metric
-            print(f"No DB data found for {company} {metric}; trying sample fallback")
-            series = SAMPLE_SERIES.get((company, metric))
-            if not series:
-                # Ask LLM to synthesize series if sample not available
-                series = _llm_synthesize_series_sync(company, metric)
-                if not series:
-                    print(f"No sample data for {company} {metric}")
-                    return None
-    # Step 4: Generate plot
+    # Step 3: Generate plot
     try:
-        plot_base64 = plot_metric(series, company, metric)
+        plot_base64 = plot_metric(series, f"S&P 500 ({company})", metric)
     except Exception as e:
         print(f"Error generating plot: {e}")
         return None
 
-    # Step 5: Return JSON response
+    # Step 4: Return JSON response
     return {
         "company": company,
         "metric": metric,

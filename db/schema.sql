@@ -1,268 +1,109 @@
--- ============================================================================
--- FINANCIAL RAG PROJECT – PostgreSQL Database Schema
--- ============================================================================
+INSERT INTO financial_metrics
+(company_id, period, revenue, net_income, operating_income,
+ total_assets, total_liabilities, equity, eps)
+SELECT id, period, revenue, net_income, operating_income,
+       assets, liabilities, assets - liabilities, eps
+FROM companies
+JOIN (VALUES
+('2019-Q1', 58000, 11500, 13500, 340000, 250000, 2.10),
+('2019-Q2', 53000, 10000, 12000, 345000, 252000, 1.95),
+('2019-Q3', 64000, 13000, 15000, 350000, 255000, 2.30),
+('2019-Q4', 92000, 22000, 26000, 355000, 258000, 3.05),
 
--- Usage:
---   psql -U postgres -d finance_db -f db/schema.sql
---
+('2020-Q1', 60000, 12000, 14000, 360000, 260000, 2.20),
+('2020-Q2', 59000, 11000, 13500, 365000, 262000, 2.05),
+('2020-Q3', 67000, 14000, 16500, 370000, 265000, 2.50),
+('2020-Q4', 111000, 28000, 32000, 375000, 268000, 4.10),
 
--- ============================================================================
--- EXAMPLE QUERIES YOU CAN ASK THE SYSTEM
--- ============================================================================
---
--- 1️⃣  SQL / ANALYTICS QUESTIONS (Numeric Data & Aggregations)
--- These questions trigger SQL agent to query the database directly.
---
---  📊 Financial Metrics
---    "What was Apple's revenue in 2024 Q1?"
---    "Compare Apple's revenue between Q1 and Q2 of 2024."
---    "What is Apple's total assets and liabilities for 2024-Q2?"
---    "What is the EPS for Apple for 2024 Q2?"
---    "Which company has the highest revenue in Q1 2024?"
---    "Show the revenue growth rate for Apple year-over-year."
---
---  🏭 Products
---    "List Apple's top revenue-contributing products."
---    "What percentage of Apple's revenue comes from iPhone?"
---    "When was the MacBook launched?"
---    "How many products does Apple have in active status?"
---
---  📈 Quarterly Reports
---    "Summarize Apple's Q1 2024 quarterly performance."
---    "What were the highlights of Apple's Q1 2024 report?"
---    "Show all quarterly reports for Apple in 2024."
---
---  📝 Analyst Ratings
---    "What did Goldman Sachs rate Apple?"
---    "What is the latest analyst price target for Apple?"
---    "List all analyst ratings for Apple."
---    "What firms have rated Apple and what are their ratings?"
---
---  🌍 Market Trends
---    "What are the top market trends in the Technology sector?"
---    "Show all market trends with impact score above 7."
---    "How is AI adoption impacting technology companies?"
---
--- ============================================================================
---
--- 2️⃣  DOCUMENT / RAG QUESTIONS (Context-based from Vectorstore)
--- These questions are answered using document embeddings and retrieval.
---
---  🎓 Explanations & Context
---    "Explain Apple's recent financial performance in simple terms."
---    "What are the major trends affecting the Technology sector?"
---    "Give a summary of Apple's quarterly highlights."
---    "What are the risks and opportunities for Apple in 2024?"
---    "Summarize Apple's business segments and revenue drivers."
---    "What is Apple's competitive advantage?"
---    "Explain Apple's supply chain strategy."
---
--- ============================================================================
---
--- 3️⃣  HYBRID QUESTIONS (SQL + RAG Combined)
--- These questions require both numeric data AND narrative explanation.
---
---  🔥 Combined Analysis
---    "Is Apple growing or declining? Use numbers and explanation."
---    "Compare Apple's revenue growth and summarize key reasons behind it."
---    "How do Apple's financial metrics align with analyst expectations?"
---    "What is Apple's financial health and what trends influence it?"
---    "Analyze Apple's profitability trend and explain the business factors."
---
---  📌 Strategic Questions
---    "Should investors consider buying Apple stock? Provide metrics and analyst reasoning."
---    "How is the semiconductor market trend affecting Apple's performance?"
---    "What are Apple's growth opportunities based on financial data and market trends?"
---    "Compare Apple vs Microsoft on revenue and profitability."
---
--- ============================================================================
---
--- 4️⃣  NATURAL LANGUAGE → SQL (Auto-Generated Queries)
--- The AI system can also translate natural language to SQL automatically:
---
---    "Show all Apple's quarterly revenue sorted by period."
---    "Which Apple product has the highest revenue contribution?"
---    "List all market trends with impact score above 8 and sort by date."
---    "Find companies in the Technology sector with highest revenue in 2024-Q1."
---    "Show analyst price targets for Apple from different firms."
---
--- ============================================================================
---
--- 5️⃣  GENERAL FINANCIAL KNOWLEDGE QUESTIONS
--- These are answered by the configured LLM (Ollama or OpenAI):
---
---    "What drives Apple's profitability?"
---    "How does Apple compare with other tech companies?"
---    "What are the major factors influencing the EV market?" (Tesla-related)
---    "Explain EPS in simple terms."
---    "What is market capitalization?"
---    "How do quarterly earnings reports impact stock prices?"
---
--- ============================================================================
+('2021-Q1', 90000, 23000, 27000, 380000, 270000, 3.60),
+('2021-Q2', 82000, 21000, 25000, 385000, 273000, 3.30),
+('2021-Q3', 83000, 20500, 24500, 390000, 275000, 3.20),
+('2021-Q4', 123000, 34000, 39000, 395000, 278000, 5.30),
 
--- ============================================================================
--- TABLE: companies
--- ============================================================================
-CREATE TABLE IF NOT EXISTS companies (
-    id SERIAL PRIMARY KEY,
-    ticker VARCHAR(10) UNIQUE NOT NULL,
-    name VARCHAR(255) NOT NULL,
-    sector VARCHAR(100),
-    country VARCHAR(100),
-    founded_year INT,
-    website VARCHAR(255),
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-);
+('2022-Q1', 97000, 25000, 29000, 400000, 280000, 3.90),
+('2022-Q2', 83000, 19500, 23500, 405000, 283000, 3.10),
+('2022-Q3', 90000, 22000, 26000, 410000, 285000, 3.45),
+('2022-Q4', 118000, 30000, 35000, 415000, 288000, 4.80),
 
--- ============================================================================
--- TABLE: financial_metrics
--- ============================================================================
-CREATE TABLE IF NOT EXISTS financial_metrics (
-    id SERIAL PRIMARY KEY,
-    company_id INT NOT NULL REFERENCES companies(id) ON DELETE CASCADE,
-    period VARCHAR(20) NOT NULL,   -- e.g., '2024-Q1'
-    revenue NUMERIC(15, 2),
-    net_income NUMERIC(15, 2),
-    operating_income NUMERIC(15, 2),
-    total_assets NUMERIC(15, 2),
-    total_liabilities NUMERIC(15, 2),
-    equity NUMERIC(15, 2),
-    eps NUMERIC(10, 2),
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    UNIQUE(company_id, period)
-);
-
--- ============================================================================
--- TABLE: quarterly_reports
--- ============================================================================
-CREATE TABLE IF NOT EXISTS quarterly_reports (
-    id SERIAL PRIMARY KEY,
-    company_id INT NOT NULL REFERENCES companies(id) ON DELETE CASCADE,
-    quarter VARCHAR(10) NOT NULL,
-    year INT NOT NULL,
-    report_date DATE,
-    summary TEXT,
-    highlights TEXT,
-    document_path VARCHAR(255),
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    UNIQUE(company_id, year, quarter)
-);
-
--- ============================================================================
--- TABLE: products
--- ============================================================================
-CREATE TABLE IF NOT EXISTS products (
-    id SERIAL PRIMARY KEY,
-    company_id INT NOT NULL REFERENCES companies(id) ON DELETE CASCADE,
-    name VARCHAR(255) NOT NULL,
-    description TEXT,
-    launch_date DATE,
-    revenue_contribution NUMERIC(5, 2),  -- percent of total revenue
-    status VARCHAR(50),
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-);
-
--- ============================================================================
--- TABLE: market_trends
--- ============================================================================
-CREATE TABLE IF NOT EXISTS market_trends (
-    id SERIAL PRIMARY KEY,
-    sector VARCHAR(100) NOT NULL,
-    trend_date DATE NOT NULL,
-    description TEXT,
-    impact_score INT,
-    source VARCHAR(255),
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-);
-
--- ============================================================================
--- TABLE: analyst_ratings
--- ============================================================================
-CREATE TABLE IF NOT EXISTS analyst_ratings (
-    id SERIAL PRIMARY KEY,
-    company_id INT NOT NULL REFERENCES companies(id) ON DELETE CASCADE,
-    analyst_name VARCHAR(255),
-    firm VARCHAR(255),
-    rating VARCHAR(50),
-    price_target NUMERIC(10, 2),
-    rating_date DATE,
-    rationale TEXT,
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-);
-
--- ============================================================================
--- INDEXES
--- ============================================================================
-CREATE INDEX IF NOT EXISTS idx_financial_metrics_company ON financial_metrics(company_id);
-CREATE INDEX IF NOT EXISTS idx_financial_metrics_period ON financial_metrics(period);
-CREATE INDEX IF NOT EXISTS idx_quarterly_reports_company ON quarterly_reports(company_id);
-CREATE INDEX IF NOT EXISTS idx_quarterly_reports_year_quarter ON quarterly_reports(year, quarter);
-CREATE INDEX IF NOT EXISTS idx_products_company ON products(company_id);
-CREATE INDEX IF NOT EXISTS idx_market_trends_sector ON market_trends(sector);
-CREATE INDEX IF NOT EXISTS idx_market_trends_date ON market_trends(trend_date);
-CREATE INDEX IF NOT EXISTS idx_analyst_ratings_company ON analyst_ratings(company_id);
-
--- ============================================================================
--- SAMPLE DATA
--- ============================================================================
-
--- Companies
-INSERT INTO companies (ticker, name, sector, country, founded_year, website)
-VALUES 
-    ('AAPL', 'Apple Inc.', 'Technology', 'USA', 1976, 'https://www.apple.com'),
-    ('MSFT', 'Microsoft Corporation', 'Technology', 'USA', 1975, 'https://www.microsoft.com'),
-    ('GOOGL', 'Alphabet Inc.', 'Technology', 'USA', 1998, 'https://www.google.com'),
-    ('TSLA', 'Tesla Inc.', 'Automotive', 'USA', 2003, 'https://www.tesla.com'),
-    ('AMZN', 'Amazon.com Inc.', 'E-commerce/Cloud', 'USA', 1994, 'https://www.amazon.com')
-ON CONFLICT (ticker) DO NOTHING;
-
--- Apple Financial Metrics
-INSERT INTO financial_metrics (company_id, period, revenue, net_income, operating_income, total_assets, total_liabilities, equity, eps)
-SELECT id, '2024-Q1', 123456.00, 34567.00, 45678.00, 987654.00, 123456.00, 864198.00, 2.25
-FROM companies WHERE ticker = 'AAPL'
+('2023-Q1', 94000, 24000, 28500, 420000, 290000, 3.80),
+('2023-Q2', 81000, 19000, 23000, 425000, 292000, 3.00),
+('2023-Q3', 89000, 21500, 25500, 430000, 295000, 3.40),
+('2023-Q4', 119000, 31000, 36000, 435000, 298000, 4.90)
+) AS f(period, revenue, net_income, operating_income, assets, liabilities, eps)
+ON TRUE
+WHERE ticker = 'AAPL'
 ON CONFLICT (company_id, period) DO NOTHING;
 
-INSERT INTO financial_metrics (company_id, period, revenue, net_income, operating_income, total_assets, total_liabilities, equity, eps)
-SELECT id, '2024-Q2', 134567.00, 38901.00, 51234.00, 1001234.00, 145678.00, 855556.00, 2.52
-FROM companies WHERE ticker = 'AAPL'
+INSERT INTO financial_metrics
+(company_id, period, revenue, net_income, operating_income,
+ total_assets, total_liabilities, equity, eps)
+SELECT id, period, revenue, net_income, operating_income,
+       assets, liabilities, assets - liabilities, eps
+FROM companies
+JOIN (VALUES
+('2019-Q4', 36000, 11600, 13200, 286000, 184000, 1.55),
+('2020-Q4', 43000, 15500, 18000, 300000, 190000, 2.05),
+('2021-Q4', 51000, 18700, 22000, 320000, 200000, 2.50),
+('2022-Q4', 52000, 16500, 20000, 335000, 205000, 2.35),
+('2023-Q4', 56500, 20000, 24500, 355000, 210000, 2.80),
+('2024-Q2', 62000, 22500, 27000, 370000, 215000, 3.10)
+) AS f(period, revenue, net_income, operating_income, assets, liabilities, eps)
+ON TRUE
+WHERE ticker = 'MSFT'
 ON CONFLICT (company_id, period) DO NOTHING;
+INSERT INTO quarterly_reports
+(company_id, quarter, year, report_date, summary, highlights)
+SELECT id, quarter, year, report_date, summary, highlights
+FROM companies
+JOIN (VALUES
+('Q2', 2024, '2024-05-01',
+ 'Continued growth driven by Services and regional expansion.',
+ 'Services revenue +11%, emerging markets growth strong'),
 
--- Apple Products
-INSERT INTO products (company_id, name, description, launch_date, revenue_contribution, status)
-SELECT id, 'iPhone', 'Flagship smartphone device', '2007-06-29', 52.00, 'active'
-FROM companies WHERE ticker = 'AAPL'
-ON CONFLICT DO NOTHING;
-
-INSERT INTO products (company_id, name, description, launch_date, revenue_contribution, status)
-SELECT id, 'iPad', 'Tablet device', '2010-04-03', 8.50, 'active'
-FROM companies WHERE ticker = 'AAPL'
-ON CONFLICT DO NOTHING;
-
-INSERT INTO products (company_id, name, description, launch_date, revenue_contribution, status)
-SELECT id, 'MacBook', 'Personal computers', '2006-01-10', 15.30, 'active'
-FROM companies WHERE ticker = 'AAPL'
-ON CONFLICT DO NOTHING;
-
--- Apple Quarterly Report
-INSERT INTO quarterly_reports (company_id, quarter, year, report_date, summary, highlights)
-SELECT id, 'Q1', 2024, '2024-02-01',
-       'Strong Q1 performance with iPhone sales leading growth.',
-       'iPhone revenue +5% YoY, Services at a record high'
-FROM companies WHERE ticker = 'AAPL'
+('Q3', 2024, '2024-08-01',
+ 'Stable demand across product lines despite macro uncertainty.',
+ 'Wearables steady, supply chain efficiency improved')
+) AS r(quarter, year, report_date, summary, highlights)
+ON TRUE
+WHERE ticker = 'AAPL'
 ON CONFLICT (company_id, year, quarter) DO NOTHING;
 
--- Analyst Rating
-INSERT INTO analyst_ratings (company_id, analyst_name, firm, rating, price_target, rating_date, rationale)
-SELECT id, 'Jane Smith', 'Goldman Sachs', 'Buy', 225.50, '2024-03-15',
-       'Strong services growth and new AI features justify premium valuation'
-FROM companies WHERE ticker = 'AAPL'
+INSERT INTO products
+(company_id, name, description, launch_date, revenue_contribution, status)
+SELECT id, name, description, launch_date, revenue_contribution, status
+FROM companies
+JOIN (VALUES
+('Apple Watch', 'Smart wearable device', '2015-04-24', 9.20, 'active'),
+('AirPods', 'Wireless audio accessories', '2016-12-13', 7.10, 'active'),
+('Apple TV+', 'Subscription streaming service', '2019-11-01', 3.50, 'active')
+) AS p(name, description, launch_date, revenue_contribution, status)
+ON TRUE
+WHERE ticker = 'AAPL'
+ON CONFLICT DO NOTHING;
+INSERT INTO analyst_ratings
+(company_id, analyst_name, firm, rating, price_target, rating_date, rationale)
+SELECT id, analyst_name, firm, rating, price_target, rating_date, rationale
+FROM companies
+JOIN (VALUES
+('Mark Lee', 'Morgan Stanley', 'Overweight', 235.00, '2024-04-20',
+ 'Strong ecosystem lock-in and expanding margins'),
+
+('Sara Chen', 'JP Morgan', 'Buy', 240.00, '2024-06-10',
+ 'AI-driven services growth expected to accelerate earnings')
+) AS a(analyst_name, firm, rating, price_target, rating_date, rationale)
+ON TRUE
+WHERE ticker = 'AAPL'
 ON CONFLICT DO NOTHING;
 
--- Market Trends
-INSERT INTO market_trends (sector, trend_date, description, impact_score, source)
+
+INSERT INTO market_trends
+(sector, trend_date, description, impact_score, source)
 VALUES
-    ('Technology', '2024-01-15', 'AI adoption accelerating across enterprise sector', 9, 'Market Research'),
-    ('Technology', '2024-02-20', 'Semiconductor supply chain stabilized', 7, 'Industry Report'),
-    ('Automotive', '2024-01-10', 'EV market growing faster than expected', 8, 'Analyst Report')
-ON CONFLICT DO NOTHING;
+('Technology', '2024-03-15',
+ 'Generative AI adoption driving increased cloud infrastructure spending', 9, 'Industry Analysis'),
+
+('Technology', '2024-05-10',
+ 'Regulatory scrutiny on big tech data usage intensifying', 7, 'Policy Report'),
+
+('E-commerce/Cloud', '2024-04-05',
+ 'Cloud cost optimization becoming a top CIO priority', 8, 'Market Survey');
