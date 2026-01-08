@@ -1,4 +1,4 @@
-INSERT INTO financial_metrics
+ INSERT INTO financial_metrics
 (company_id, period, revenue, net_income, operating_income,
  total_assets, total_liabilities, equity, eps)
 SELECT id, period, revenue, net_income, operating_income,

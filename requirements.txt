@@ -36,3 +36,7 @@ openpyxl
 
 # Yahoo Finance API (live stock data)
 yfinance
+
+# Monitoring & Metrics
+prometheus_client
+

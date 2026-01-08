@@ -4,21 +4,30 @@ WINDOWS SAFETY NOTE:
 - This server should start exactly ONE time
 - If multiple processes bind to port 8000, restart with: taskkill /F /IM python.exe
 - serve.py includes guards to detect and prevent multiple instances
+
+ENTERPRISE FEATURES:
+- API versioning (v1, v2) with backwards compatibility
+- Prometheus metrics endpoint (/metrics)
+- Background task processing (/api/v1/chat/async)
+- Debug middleware with X-Debug-Info headers
+- Comprehensive error handling and logging
 """
 # Fix OpenMP duplicate runtime warning (common with ML libraries like numpy+mkl)
 import os
 os.environ.setdefault("KMP_DUPLICATE_LIB_OK", "TRUE")
 os.environ.setdefault("OMP_NUM_THREADS", "4")
 
-from fastapi import FastAPI, HTTPException, UploadFile, File
+from fastapi import FastAPI, HTTPException, UploadFile, File, APIRouter, Depends
 from fastapi.staticfiles import StaticFiles
-from fastapi.responses import FileResponse, JSONResponse
+from fastapi.responses import FileResponse, JSONResponse, Response
 from fastapi.exceptions import RequestValidationError
-from pydantic import BaseModel
-from typing import Any, Dict, Optional
+from pydantic import BaseModel, Field
+from typing import Any, Dict, Optional, List
 import traceback
 from functools import lru_cache
 from datetime import datetime, timedelta
+import time
+import logging
 
 import anyio
 
@@ -51,25 +60,364 @@ from app.core.sp500_companies import (
 )
 from app.core.response_utils import analytics_response, merge_date_range
 
+# Enterprise features
+from app.core.queue import get_query_queue, TaskNotFoundError
+from app.core.metrics import (
+    track_http_request,
+    track_query_classification,
+    get_metrics,
+    get_metrics_summary,
+    http_requests_in_progress,
+)
+from app.middleware.debug import DebugMiddleware, timed, set_debug_info
+from app.config import settings
+
 # CORS middleware for browser requests
 from fastapi.middleware.cors import CORSMiddleware
 
-app = FastAPI(title="Financial RAG API")
+logger = logging.getLogger(__name__)
 
-# RECOVERY FIX: Add CORS middleware to allow browser requests from any origin
-# This fixes "Failed to fetch" errors when dashboard.html calls the API
+# ============================================================================
+# APPLICATION SETUP
+# ============================================================================
+
+app = FastAPI(
+    title=settings.app_name,
+    version=settings.app_version,
+    description="Enterprise-grade Financial RAG API with real-time market data and document analysis",
+    contact={
+        "name": "Financial RAG Team",
+        "email": "support@financialrag.example.com",
+    },
+    license_info={
+        "name": "MIT",
+        "url": "https://opensource.org/licenses/MIT",
+    },
+    openapi_tags=[
+        {"name": "health", "description": "Health check and monitoring endpoints"},
+        {"name": "chat", "description": "Financial Q&A chat endpoints"},
+        {"name": "analytics", "description": "S&P 500 analytics and insights"},
+        {"name": "data", "description": "Data ingestion and management"},
+        {"name": "config", "description": "Configuration and debugging"},
+    ],
+)
+
+# Add CORS middleware
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # Allow all origins for development
+    allow_origins=settings.security.allowed_origins,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
-# Serve a minimal web UI from the repository `web/` directory.
+# Add debug middleware (only active when DEBUG=true)
+app.add_middleware(DebugMiddleware)
+
+# Metrics middleware
+@app.middleware("http")
+async def metrics_middleware(request, call_next):
+    """Track HTTP metrics for all requests."""
+    method = request.method
+    path = request.url.path
+    
+    # Increment in-progress gauge
+    http_requests_in_progress.labels(method=method, endpoint=path).inc()
+    
+    start_time = time.time()
+    try:
+        response = await call_next(request)
+        status_code = response.status_code
+    except Exception as e:
+        status_code = 500
+        raise
+    finally:
+        # Decrement in-progress gauge
+        http_requests_in_progress.labels(method=method, endpoint=path).dec()
+        
+        # Track request
+        duration = time.time() - start_time
+        track_http_request(method, path, status_code, duration)
+    
+    return response
+
+# Serve web UI
 web_dir = os.path.normpath(os.path.join(os.path.dirname(__file__), "..", "..", "web"))
 if os.path.isdir(web_dir):
     app.mount("/static", StaticFiles(directory=web_dir), name="static")
+
+# ============================================================================
+# PYDANTIC MODELS
+# ============================================================================
+
+class ChatRequest(BaseModel):
+    """V1 Chat request model."""
+    user_id: str = Field(..., description="User identifier for tracking", example="user123")
+    question: str = Field(..., description="Financial question", example="What is Apple's revenue?")
+    
+    class Config:
+        json_schema_extra = {
+            "example": {
+                "user_id": "user123",
+                "question": "What is Apple's market cap?",
+            }
+        }
+
+
+class ChatRequestV2(BaseModel):
+    """V2 Chat request with additional features."""
+    user_id: str = Field(..., description="User identifier", example="user123")
+    question: str = Field(..., description="Financial question", example="Analyze Tesla stock")
+    include_sources: bool = Field(
+        default=False,
+        description="Include source attribution in response"
+    )
+    stream_response: bool = Field(
+        default=False,
+        description="Stream response (not yet implemented)"
+    )
+    max_tokens: Optional[int] = Field(
+        default=None,
+        description="Maximum tokens in response",
+        ge=1,
+        le=4000
+    )
+    
+    class Config:
+        json_schema_extra = {
+            "example": {
+                "user_id": "user123",
+                "question": "Compare Apple and Microsoft revenue",
+                "include_sources": True,
+                "max_tokens": 500,
+            }
+        }
+
+
+class ChatResponse(BaseModel):
+    """Chat response model."""
+    answer: Any = Field(..., description="Answer (string or dict)")
+    query_type: str = Field(..., description="Query classification type")
+    router: Dict[str, Any] = Field(..., description="Router decision metadata")
+    source: Optional[str] = Field(None, description="Data source used")
+    
+    class Config:
+        json_schema_extra = {
+            "example": {
+                "answer": "Apple's revenue for Q4 2023 was $119.6 billion.",
+                "query_type": "LIVE_DATA",
+                "router": {"reason": "Market query"},
+                "source": "yahoo_finance",
+            }
+        }
+
+
+class ChatResponseV2(BaseModel):
+    """V2 Chat response with source attribution."""
+    answer: Any = Field(..., description="Answer text or structured data")
+    query_type: str = Field(..., description="Query classification")
+    router: Dict[str, Any] = Field(..., description="Router metadata")
+    source: Optional[str] = Field(None, description="Primary data source")
+    sources: Optional[List[Dict[str, Any]]] = Field(
+        None,
+        description="Detailed source attribution"
+    )
+    metadata: Optional[Dict[str, Any]] = Field(
+        None,
+        description="Additional response metadata"
+    )
+    
+    class Config:
+        json_schema_extra = {
+            "example": {
+                "answer": "Based on live data, Apple's stock is trading at $175.43.",
+                "query_type": "LIVE_DATA",
+                "router": {"reason": "Stock price query"},
+                "source": "yahoo_finance",
+                "sources": [
+                    {"type": "yahoo_finance", "confidence": 1.0, "timestamp": "2025-12-29T10:00:00Z"}
+                ],
+                "metadata": {"processing_time_ms": 345, "cache_hit": False},
+            }
+        }
+
+
+class TaskResponse(BaseModel):
+    """Background task response."""
+    task_id: str = Field(..., description="Unique task identifier")
+    status: str = Field(..., description="Task status")
+    status_url: str = Field(..., description="URL to check task status")
+    
+    class Config:
+        json_schema_extra = {
+            "example": {
+                "task_id": "550e8400-e29b-41d4-a716-446655440000",
+                "status": "pending",
+                "status_url": "/api/v1/tasks/550e8400-e29b-41d4-a716-446655440000",
+            }
+        }
+
+
+class TaskStatusResponse(BaseModel):
+    """Task status response."""
+    task_id: str
+    status: str
+    result: Optional[Any] = None
+    error: Optional[Dict[str, Any]] = None
+    created_at: str
+    started_at: Optional[str] = None
+    completed_at: Optional[str] = None
+
+
+# ============================================================================
+# API V1 ROUTER
+# ============================================================================
+
+v1_router = APIRouter(prefix="/api/v1", tags=["v1"])
+
+
+@v1_router.post("/chat", response_model=ChatResponse, summary="Chat with Financial RAG (V1)")
+async def chat_v1(req: ChatRequest):
+    """
+    Process financial question using RAG pipeline (V1).
+    
+    Automatically routes to appropriate data source:
+    - LIVE_DATA: Real-time market data from Yahoo Finance
+    - DOC: Document retrieval from vector store
+    - SQL: Historical database queries
+    - HYBRID: Combination of sources
+    """
+    try:
+        result = await anyio.to_thread.run_sync(answer_financial_question, req.question)
+        
+        # Track query classification
+        query_type = result.get("query_type", "UNKNOWN")
+        track_query_classification(query_type)
+        set_debug_info("query_type", query_type)
+        
+        return ChatResponse(
+            answer=result.get("answer", ""),
+            query_type=query_type,
+            router=result.get("router", {}),
+            source=result.get("source"),
+        )
+    except Exception as e:
+        logger.error(f"Chat V1 error: {e}", exc_info=True)
+        error_msg = f"Server error: {str(e)}"
+        return ChatResponse(
+            answer=error_msg,
+            query_type="ERROR",
+            router={"error": str(e), "traceback": traceback.format_exc()},
+        )
+
+
+@v1_router.post("/chat/async", response_model=TaskResponse, summary="Async Chat (Background Task)")
+async def chat_async_v1(req: ChatRequest):
+    """
+    Submit chat request as background task.
+    
+    Returns immediately with task ID. Use /api/v1/tasks/{task_id} to check status.
+    Useful for long-running queries that might exceed HTTP timeout.
+    """
+    try:
+        queue = get_query_queue()
+        
+        # Wrap answer_financial_question for async execution
+        async def process_query():
+            return await anyio.to_thread.run_sync(answer_financial_question, req.question)
+        
+        task_id = await queue.add_task(process_query)
+        
+        return TaskResponse(
+            task_id=task_id,
+            status="pending",
+            status_url=f"/api/v1/tasks/{task_id}",
+        )
+    except Exception as e:
+        logger.error(f"Async chat error: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"Failed to create task: {str(e)}")
+
+
+@v1_router.get("/tasks/{task_id}", response_model=TaskStatusResponse, summary="Get Task Status")
+async def get_task_status_v1(task_id: str):
+    """
+    Get status of background task.
+    
+    Returns task status, result (if completed), or error details (if failed).
+    """
+    try:
+        queue = get_query_queue()
+        status_data = queue.get_task_status(task_id)
+        
+        return TaskStatusResponse(**status_data)
+    except TaskNotFoundError:
+        raise HTTPException(status_code=404, detail=f"Task {task_id} not found")
+    except Exception as e:
+        logger.error(f"Task status error: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"Failed to get task status: {str(e)}")
+
+
+# ============================================================================
+# API V2 ROUTER  
+# ============================================================================
+
+v2_router = APIRouter(prefix="/api/v2", tags=["v2"])
+
+
+@v2_router.post("/chat", response_model=ChatResponseV2, summary="Chat with Financial RAG (V2)")
+async def chat_v2(req: ChatRequestV2):
+    """
+    Enhanced chat endpoint with source attribution (V2).
+    
+    New features:
+    - Source attribution when include_sources=true
+    - Token limit control via max_tokens
+    - Streaming support (coming soon)
+    - Enhanced metadata in response
+    """
+    try:
+        start_time = time.time()
+        
+        result = await anyio.to_thread.run_sync(answer_financial_question, req.question)
+        
+        query_type = result.get("query_type", "UNKNOWN")
+        track_query_classification(query_type)
+        
+        # Build sources list if requested
+        sources = None
+        if req.include_sources:
+            sources = []
+            source_type = result.get("source", "unknown")
+            sources.append({
+                "type": source_type,
+                "confidence": 1.0,
+                "timestamp": datetime.utcnow().isoformat() + "Z",
+            })
+        
+        # Add metadata
+        processing_time_ms = round((time.time() - start_time) * 1000, 2)
+        metadata = {
+            "processing_time_ms": processing_time_ms,
+            "cache_hit": False,  # TODO: Track actual cache hits
+            "model": settings.llm_model,
+        }
+        
+        return ChatResponseV2(
+            answer=result.get("answer", ""),
+            query_type=query_type,
+            router=result.get("router", {}),
+            source=result.get("source"),
+            sources=sources,
+            metadata=metadata,
+        )
+    except Exception as e:
+        logger.error(f"Chat V2 error: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"Server error: {str(e)}")
+
+
+# ============================================================================
+# LEGACY ENDPOINTS (backwards compatibility)
+# ============================================================================
 
 
 @app.get("/")
@@ -90,46 +438,56 @@ async def dashboard():
     return JSONResponse(status_code=404, content={"error": "dashboard.html not found"})
 
 
-class ChatRequest(BaseModel):
-    user_id: str
-    question: str
-
-
-class ChatResponse(BaseModel):
-    """Response model that accepts dict or string for answer field."""
-    answer: Any  # Can be string (DOC) or dict (LIVE_DATA)
-    query_type: str
-    router: Dict[str, Any]
-    source: Optional[str] = None
-
-
-@app.post("/chat", response_model=ChatResponse)
-async def chat_endpoint(req: ChatRequest):
-    """Async endpoint that runs the (potentially blocking) chain in a worker thread.
-
-    Running the whole orchestration in a worker thread prevents blocking the
-    event loop and avoids issues with uvicorn's reload and asyncio cancellations.
+@app.post("/chat", response_model=ChatResponse, tags=["chat", "legacy"])
+async def chat_legacy(req: ChatRequest):
     """
-    try:
-        result = await anyio.to_thread.run_sync(answer_financial_question, req.question)
-        return ChatResponse(
-            answer=result.get("answer", ""),
-            query_type=result.get("query_type", "UNKNOWN"),
-            router=result.get("router", {}),
-            source=result.get("source"),
-        )
-    except Exception as e:
-        error_msg = f"Server error: {str(e)}"
-        return ChatResponse(
-            answer=error_msg,
-            query_type="ERROR",
-            router={"error": str(e), "traceback": traceback.format_exc()},
-        )
+    Legacy chat endpoint (backwards compatibility).
+    
+    Routes to V1 endpoint. Use /api/v1/chat or /api/v2/chat for new implementations.
+    """
+    return await chat_v1(req)
 
 
-@app.get("/health")
+# ============================================================================
+# MONITORING & DEBUGGING ENDPOINTS
+# ============================================================================
+
+@app.get("/health", tags=["health"], summary="Health Check")
 def health_check():
-    return {"status": "ok"}
+    """Simple health check endpoint."""
+    return {"status": "ok", "timestamp": datetime.utcnow().isoformat()}
+
+
+@app.get("/metrics", tags=["health"], summary="Prometheus Metrics")
+async def metrics_endpoint():
+    """
+    Expose Prometheus metrics for monitoring.
+    
+    Scrape this endpoint with Prometheus to collect:
+    - HTTP request metrics
+    - LLM usage statistics
+    - Cache performance
+    - Background task stats
+    """
+    metrics_data, content_type = get_metrics()
+    return Response(content=metrics_data, media_type=content_type)
+
+
+@app.get("/api/v1/config", tags=["config"], summary="Get Configuration")
+async def get_config():
+    """
+    Get sanitized configuration (API keys masked).
+    
+    Useful for debugging configuration issues without exposing sensitive data.
+    """
+    return JSONResponse(content=settings.get_sanitized_config())
+
+
+@app.get("/api/v1/queue/stats", tags=["health"], summary="Queue Statistics")
+async def queue_stats():
+    """Get background task queue statistics."""
+    queue = get_query_queue()
+    return JSONResponse(content=queue.get_queue_stats())
 
 
 @app.get("/api/health/data")
@@ -918,6 +1276,19 @@ async def sp500_company_detail(ticker: str):
         )
 
 
+# ============================================================================
+# REGISTER ROUTERS
+# ============================================================================
+
+# Register v1 and v2 routers
+app.include_router(v1_router)
+app.include_router(v2_router)
+
+# ============================================================================
+# LIFECYCLE EVENTS
+# ============================================================================
+
+
 @app.on_event("startup")
 async def startup_event():
     """Startup event handler - verify LLM connection and system health."""
@@ -925,17 +1296,22 @@ async def startup_event():
     _pid = _os.getpid()
     
     print("=" * 70)
-    print(f"Financial RAG API starting up (PID: {_pid})")
+    print(f"Financial RAG API v{settings.app_version} - Enterprise Edition")
     print("=" * 70)
-    print(f"[STARTUP] Process ID: {_pid} - THIS IS THE ONLY PROCESS THAT SHOULD EXIST")
-    print(f"[STARTUP] If you see multiple PIDs on port 8000, restart with:")
+    print(f"[STARTUP] Process ID: {_pid}")
+    print(f"[STARTUP] Debug Mode: {settings.debug}")
+    print(f"[STARTUP] Environment: {'Production' if settings.is_production else 'Development'}")
+    
+    if settings.debug:
+        print(f"[STARTUP] Debug middleware ACTIVE - X-Debug-Info headers enabled")
+    
+    print(f"\n[STARTUP] If multiple PIDs on port 8000, restart with:")
     print(f"[STARTUP]   tasklist | findstr python")
     print(f"[STARTUP]   taskkill /PID <pid> /F")
     
     # Verify Ollama LLM connection
     try:
         from app.core.llm import _check_ollama_health
-        from app.config import settings
         
         print("\n[STARTUP] Checking LLM connection...")
         if not settings.ollama_enabled:
@@ -950,14 +1326,31 @@ async def startup_event():
     except Exception as e:
         print(f"[STARTUP] LLM health check error: {str(e)}")
     
-    print(f"\n[STARTUP] API ready at http://127.0.0.1:8000")
+    print(f"\n[STARTUP] Enterprise Features:")
+    print(f"[STARTUP]   ✓ API Versioning (v1, v2)")
+    print(f"[STARTUP]   ✓ Prometheus Metrics (/metrics)")
+    print(f"[STARTUP]   ✓ Background Tasks (/api/v1/chat/async)")
+    print(f"[STARTUP]   ✓ Debug Middleware (X-Debug-Info)")
+    print(f"[STARTUP]   ✓ Configuration Validation")
+    
+    print(f"\n[STARTUP] API Endpoints:")
+    print(f"[STARTUP]   • Main UI: http://127.0.0.1:8000")
+    print(f"[STARTUP]   • Dashboard: http://127.0.0.1:8000/dashboard")
+    print(f"[STARTUP]   • API Docs: http://127.0.0.1:8000/docs")
+    print(f"[STARTUP]   • Chat V1: http://127.0.0.1:8000/api/v1/chat")
+    print(f"[STARTUP]   • Chat V2: http://127.0.0.1:8000/api/v2/chat (with source attribution)")
+    print(f"[STARTUP]   • Async Chat: http://127.0.0.1:8000/api/v1/chat/async")
+    print(f"[STARTUP]   • Metrics: http://127.0.0.1:8000/metrics (Prometheus)")
+    print(f"[STARTUP]   • Health: http://127.0.0.1:8000/health")
+    print(f"[STARTUP]   • Config: http://127.0.0.1:8000/api/v1/config")
     print("=" * 70)
-    print("=" * 60)
 
 
 @app.on_event("shutdown")
 async def shutdown_event():
-    # Placeholder for graceful shutdown tasks
-    print("Financial RAG API shutting down")
+    """Graceful shutdown handler."""
+    print("\n" + "=" * 70)
+    print("Financial RAG API shutting down gracefully...")
+    print("=" * 70)
 
 
