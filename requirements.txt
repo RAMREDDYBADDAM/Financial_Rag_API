@@ -40,3 +40,6 @@ yfinance
 # Monitoring & Metrics
 prometheus_client
 
+# Production server & file uploads
+python-multipart
+gunicorn
