@@ -223,7 +223,7 @@ Query → Embedding → Vector Search → Top-K Documents → LLM Context → Re
 
 **Developed by**: Ram Reddy Baddam  
 **GitHub**: github.com/RAMREDDYBADDAM/Financial_Rag_API  
-**LinkedIn**: [linkedin.com/in/ramreddybaddam](https://www.linkedin.com/in/ramreddybaddam/)  
+**LinkedIn**: [linkedin.com/in/ramreddybaddam](https://www.linkedin.com/in/ramreddyb/)  
 **Email**: ram.baddam4377@gmail.com
 
 ---
@@ -232,7 +232,7 @@ Query → Embedding → Vector Search → Top-K Documents → LLM Context → Re
 
 This project demonstrates advanced AI engineering, RAG architecture, and production-ready API development.
 
-**Contact**: ram.baddam4377@gmail.com | [LinkedIn](https://www.linkedin.com/in/ramreddybaddam/)
+**Contact**: ram.baddam4377@gmail.com | [LinkedIn](https://www.linkedin.com/in/ramreddyb/)
 
 ---
 
